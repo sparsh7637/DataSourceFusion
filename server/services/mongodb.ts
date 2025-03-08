@@ -436,3 +436,284 @@ export class MongoDBService {
     return this.isConnected;
   }
 }
+import { MongoClient, Db, Collection } from 'mongodb';
+import type { DataSource } from '@shared/schema';
+import { FileStorage } from './file-storage';
+
+interface MongoDBCollection {
+  name: string;
+  fields: {
+    name: string;
+    type: string;
+  }[];
+}
+
+export class MongoDBService {
+  private dataSource: DataSource | null = null;
+  private collections: Map<string, MongoDBCollection> = new Map();
+  private client: MongoClient | null = null;
+  private db: Db | null = null;
+  private isConnected: boolean = false;
+  private cachedCollections: string[] = [];
+
+  constructor() {
+    // Set up sample data as fallback
+    this.setupSampleData();
+  }
+
+  private setupSampleData() {
+    // Customers collection
+    const customersCollection: MongoDBCollection = {
+      name: 'customers',
+      fields: [
+        { name: '_id', type: 'string' },
+        { name: 'email', type: 'string' },
+        { name: 'name', type: 'string' },
+        { name: 'created', type: 'date' },
+      ]
+    };
+
+    // Transactions collection
+    const transactionsCollection: MongoDBCollection = {
+      name: 'transactions',
+      fields: [
+        { name: '_id', type: 'string' },
+        { name: 'orderId', type: 'string' },
+        { name: 'amount', type: 'number' },
+        { name: 'currency', type: 'string' },
+        { name: 'timestamp', type: 'date' },
+      ]
+    };
+
+    // Inventory collection
+    const inventoryCollection: MongoDBCollection = {
+      name: 'inventory',
+      fields: [
+        { name: '_id', type: 'string' },
+        { name: 'productId', type: 'string' },
+        { name: 'quantity', type: 'number' },
+        { name: 'location', type: 'string' },
+      ]
+    };
+
+    this.collections.set('customers', customersCollection);
+    this.collections.set('transactions', transactionsCollection);
+    this.collections.set('inventory', inventoryCollection);
+  }
+
+  async connect(dataSource: DataSource): Promise<boolean> {
+    try {
+      this.dataSource = dataSource;
+      
+      const uri = process.env.MONGODB_URI || dataSource.config?.uri as string;
+      const dbName = process.env.MONGODB_DB || dataSource.config?.database as string;
+      
+      if (!uri || !dbName) {
+        console.warn("Missing MongoDB connection details. Using sample data.");
+        this.isConnected = true; // Use sample data as fallback
+        return true;
+      }
+      
+      console.log(`Connecting to MongoDB database: ${dbName}`);
+      
+      this.client = new MongoClient(uri);
+      await this.client.connect();
+      this.db = this.client.db(dbName);
+      this.isConnected = true;
+      
+      // Cache collections
+      await this.cacheCollections();
+      
+      console.log(`Connected to MongoDB database: ${dbName}`);
+      return true;
+    } catch (error) {
+      console.error("Error connecting to MongoDB:", error);
+      this.isConnected = false;
+      return false;
+    }
+  }
+  
+  async disconnect(): Promise<void> {
+    if (this.client) {
+      await this.client.close();
+      this.client = null;
+      this.db = null;
+      this.isConnected = false;
+      console.log("Disconnected from MongoDB");
+    }
+  }
+
+  private async cacheCollections(): Promise<void> {
+    try {
+      if (!this.db) return;
+      
+      const collections = await this.db.listCollections().toArray();
+      this.cachedCollections = collections.map(c => c.name);
+      
+      console.log(`Cached ${this.cachedCollections.length} MongoDB collections: ${this.cachedCollections.join(', ')}`);
+      
+      // Fetch schema and data for each collection
+      for (const collName of this.cachedCollections) {
+        await this.fetchCollectionSchema(collName);
+        await this.fetchAndStoreCollection(collName);
+      }
+    } catch (error) {
+      console.error("Error caching MongoDB collections:", error);
+    }
+  }
+  
+  private async fetchCollectionSchema(collectionName: string): Promise<void> {
+    if (!this.db || !this.dataSource) return;
+    
+    try {
+      const coll = this.db.collection(collectionName);
+      const sampleDoc = await coll.findOne({});
+      
+      if (sampleDoc) {
+        const fields = this.extractFieldsFromDocument(sampleDoc);
+        this.collections.set(collectionName, {
+          name: collectionName,
+          fields
+        });
+      }
+    } catch (error) {
+      console.error(`Error fetching schema for ${collectionName}:`, error);
+    }
+  }
+  
+  private async fetchAndStoreCollection(collectionName: string): Promise<void> {
+    if (!this.db || !this.dataSource) return;
+    
+    try {
+      const coll = this.db.collection(collectionName);
+      const documents = await coll.find({}).limit(1000).toArray(); // Limiting to 1000 docs for performance
+      
+      // Get schema from the collection
+      const collectionSchema = this.collections.get(collectionName)?.fields || [];
+      
+      // Store in temp file
+      await FileStorage.storeCollection(
+        this.dataSource.id,
+        collectionName,
+        documents.map(doc => this.convertMongoData(doc)),
+        collectionSchema
+      );
+    } catch (error) {
+      console.error(`Error fetching and storing ${collectionName}:`, error);
+    }
+  }
+  
+  private convertMongoData(data: any): any {
+    if (!data) return data;
+    
+    const result: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      // Convert MongoDB specific types
+      if (key === '_id' && value && typeof value === 'object' && value.toString) {
+        result[key] = value.toString();
+      } else if (Array.isArray(value)) {
+        result[key] = value.map(item => 
+          typeof item === 'object' ? this.convertMongoData(item) : item
+        );
+      } else if (value && typeof value === 'object') {
+        result[key] = this.convertMongoData(value);
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  }
+  
+  private extractFieldsFromDocument(doc: any): { name: string; type: string }[] {
+    const fields: { name: string; type: string }[] = [];
+    
+    for (const [key, value] of Object.entries(doc)) {
+      let type = typeof value;
+      
+      // Handle MongoDB specific types
+      if (key === '_id' && value && typeof value === 'object' && value.toString) {
+        type = 'string'; // ObjectId becomes string
+      } else if (value instanceof Date) {
+        type = 'date';
+      } else if (Array.isArray(value)) {
+        type = 'array';
+      } else if (value === null) {
+        type = 'null';
+      }
+      
+      fields.push({ name: key, type });
+    }
+    
+    return fields;
+  }
+
+  async getCollections(): Promise<string[]> {
+    return this.cachedCollections.length > 0 
+      ? this.cachedCollections 
+      : Array.from(this.collections.keys());
+  }
+  
+  async getCollectionSchema(collectionName: string): Promise<{ name: string; type: string }[]> {
+    const collection = this.collections.get(collectionName);
+    return collection ? collection.fields : [];
+  }
+  
+  async executeQuery(collectionName: string, queryParams: any): Promise<any[]> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to MongoDB");
+    }
+    
+    try {
+      // Try to get from temp file first
+      if (this.dataSource) {
+        const storedCollection = await FileStorage.getCollection(this.dataSource.id, collectionName);
+        if (storedCollection) {
+          return this.filterStoredData(storedCollection.data, queryParams);
+        }
+      }
+      
+      // Fallback to direct query if temp file doesn't exist
+      if (this.db) {
+        const coll = this.db.collection(collectionName);
+        const query = this.buildMongoQuery(queryParams);
+        
+        const results = await coll.find(query).toArray();
+        return results.map(doc => this.convertMongoData(doc));
+      }
+      
+      return [];
+    } catch (error) {
+      console.error(`Error executing MongoDB query on ${collectionName}:`, error);
+      throw error;
+    }
+  }
+  
+  private filterStoredData(data: any[], queryParams: any): any[] {
+    if (!queryParams || Object.keys(queryParams).length === 0) {
+      return data;
+    }
+    
+    return data.filter(item => {
+      for (const [key, value] of Object.entries(queryParams)) {
+        if (item[key] !== value) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+  
+  private buildMongoQuery(queryParams: any): any {
+    if (!queryParams || Object.keys(queryParams).length === 0) {
+      return {};
+    }
+    
+    const query: any = {};
+    
+    for (const [key, value] of Object.entries(queryParams)) {
+      query[key] = value;
+    }
+    
+    return query;
+  }
+}
