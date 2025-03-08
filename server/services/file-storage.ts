@@ -164,3 +164,66 @@ export class FileStorageService {
 }
 
 export const fileStorage = new FileStorageService();
+import * as fs from 'fs/promises';
+import * as path from 'path';
+
+/**
+ * Simple file system based storage for caching query results
+ */
+class FileStorage {
+  private baseDir: string;
+
+  constructor(baseDir: string = path.join(process.cwd(), 'temp')) {
+    this.baseDir = baseDir;
+    this.ensureDirectoryExists();
+  }
+
+  private async ensureDirectoryExists() {
+    try {
+      await fs.access(this.baseDir);
+    } catch (error) {
+      await fs.mkdir(this.baseDir, { recursive: true });
+      console.log(`Created directory: ${this.baseDir}`);
+    }
+  }
+
+  async writeJSON(filename: string, data: any): Promise<string> {
+    const filePath = path.join(this.baseDir, filename);
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
+    console.log(`File written: ${filePath}`);
+    return filePath;
+  }
+
+  async readJSON(filename: string): Promise<any> {
+    const filePath = path.join(this.baseDir, filename);
+    try {
+      const data = await fs.readFile(filePath, 'utf8');
+      return JSON.parse(data);
+    } catch (error) {
+      console.error(`Error reading file ${filePath}:`, error);
+      return null;
+    }
+  }
+
+  async listFiles(pattern?: RegExp): Promise<string[]> {
+    const files = await fs.readdir(this.baseDir);
+    if (!pattern) {
+      return files;
+    }
+    return files.filter(file => pattern.test(file));
+  }
+
+  async deleteFile(filename: string): Promise<boolean> {
+    const filePath = path.join(this.baseDir, filename);
+    try {
+      await fs.unlink(filePath);
+      console.log(`File deleted: ${filePath}`);
+      return true;
+    } catch (error) {
+      console.error(`Error deleting file ${filePath}:`, error);
+      return false;
+    }
+  }
+}
+
+export const fileStorage = new FileStorage();
