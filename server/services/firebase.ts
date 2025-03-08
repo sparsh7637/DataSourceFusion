@@ -13,7 +13,6 @@ import {
   orderBy,
   WhereFilterOp
 } from 'firebase/firestore';
-import { FileStorage } from './file-storage';
 
 interface FirebaseCollection {
   name: string;
@@ -214,9 +213,6 @@ export class FirebaseService {
                 name: collName,
                 fields
               });
-              
-              // Fetch the full data and store it in a temp file
-              await this.fetchAndStoreCollection(collName);
             }
           }
         } catch (e) {
@@ -228,57 +224,6 @@ export class FirebaseService {
     } catch (error) {
       console.error("Error caching collections:", error);
     }
-  }
-  
-  private async fetchAndStoreCollection(collectionName: string): Promise<void> {
-    if (!this.firestore || !this.dataSource) return;
-    
-    try {
-      const collRef = collection(this.firestore, collectionName);
-      const snapshot = await getDocs(collRef);
-      
-      if (snapshot.empty) return;
-      
-      // Convert data to plain objects
-      const data = snapshot.docs.map(doc => {
-        return { id: doc.id, ...this.convertFirebaseData(doc.data()) };
-      });
-      
-      // Get schema from the collection
-      const collectionSchema = this.collections.get(collectionName)?.fields || [];
-      
-      // Store in temp file
-      await FileStorage.storeCollection(
-        this.dataSource.id,
-        collectionName,
-        data,
-        collectionSchema
-      );
-    } catch (error) {
-      console.error(`Error fetching and storing ${collectionName}:`, error);
-    }
-  }
-  
-  private convertFirebaseData(data: any): any {
-    if (!data) return data;
-    
-    if (Array.isArray(data)) {
-      return data.map(item => this.convertFirebaseData(item));
-    }
-    
-    if (typeof data === 'object') {
-      if (data.toDate && typeof data.toDate === 'function') {
-        return data.toDate();
-      }
-      
-      const result: any = {};
-      for (const [key, value] of Object.entries(data)) {
-        result[key] = this.convertFirebaseData(value);
-      }
-      return result;
-    }
-    
-    return data;
   }
   
   private extractFieldsFromDocument(doc: any): { name: string; type: string }[] {
