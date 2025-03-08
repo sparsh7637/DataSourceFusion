@@ -18,7 +18,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { apiRequest } from "@/lib/queryClient";
 import type { DataSource } from "@shared/schema";
 
 const queryFormSchema = z.object({
@@ -42,6 +44,9 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
   const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
   const [availableCollections, setAvailableCollections] = useState<{[key: string]: string[]}>({});
   const [selectedSavedQuery, setSelectedSavedQuery] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("builder");
+  const [sourceSchemas, setSourceSchemas] = useState<{[key: number]: any}>({});
+  const [queryParameters, setQueryParameters] = useState<{name: string, value: string}[]>([]);
 
   const form = useForm<z.infer<typeof queryFormSchema>>({
     resolver: zodResolver(queryFormSchema),
@@ -59,30 +64,83 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
   const formValues = form.watch();
   
   useEffect(() => {
-    onChange(formValues);
-  }, [formValues, onChange]);
-
-  // Build available collections based on selected data sources
-  useEffect(() => {
-    const collections: {[key: string]: string[]} = {};
-    
-    selectedDataSources.forEach((sourceId) => {
-      const source = dataSources.find((ds) => ds.id === sourceId);
-      if (source && Array.isArray(source.collections)) {
-        collections[source.name] = source.collections as string[];
+    // Convert parameters to params object
+    const params: {[key: string]: any} = {};
+    queryParameters.forEach(param => {
+      if (param.name && param.value) {
+        try {
+          // Try to parse as JSON first
+          params[param.name] = JSON.parse(param.value);
+        } catch (e) {
+          // If not valid JSON, store as string
+          params[param.name] = param.value;
+        }
       }
     });
     
-    setAvailableCollections(collections);
+    onChange({ ...formValues, params });
+  }, [formValues, queryParameters, onChange]);
+
+  // Load collections for selected data sources
+  useEffect(() => {
+    const fetchCollections = async () => {
+      const collections: {[key: string]: string[]} = {};
+      const schemas: {[key: number]: any} = {};
+      
+      for (const sourceId of selectedDataSources) {
+        try {
+          const source = dataSources.find(ds => ds.id === sourceId);
+          if (!source) continue;
+          
+          // Fetch collections from the API
+          const response = await apiRequest('GET', `/api/data-sources/${sourceId}/collections`);
+          const collectionNames = await response.json();
+          
+          if (Array.isArray(collectionNames) && collectionNames.length > 0) {
+            collections[source.name] = collectionNames;
+            
+            // Fetch schema for each collection
+            for (const collName of collectionNames) {
+              try {
+                const schemaResp = await apiRequest('GET', `/api/data-sources/${sourceId}/collections/${collName}/schema`);
+                const schema = await schemaResp.json();
+                
+                if (!schemas[sourceId]) schemas[sourceId] = {};
+                schemas[sourceId][collName] = schema;
+              } catch (err) {
+                console.error(`Error fetching schema for ${collName}:`, err);
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching collections for source ${sourceId}:`, error);
+          // If API fails, use collections from data source if available
+          const source = dataSources.find(ds => ds.id === sourceId);
+          if (source && Array.isArray(source.collections)) {
+            collections[source.name] = source.collections as string[];
+          }
+        }
+      }
+      
+      setAvailableCollections(collections);
+      setSourceSchemas(schemas);
+      
+      // Remove selected collections that are no longer available
+      const flatAvailableCollections = Object.values(collections).flat();
+      const validSelectedCollections = selectedCollections.filter(
+        (collection) => flatAvailableCollections.includes(collection)
+      );
+      
+      setSelectedCollections(validSelectedCollections);
+      form.setValue("collections", validSelectedCollections);
+    };
     
-    // Remove selected collections that are no longer available
-    const flatAvailableCollections = Object.values(collections).flat();
-    const validSelectedCollections = selectedCollections.filter(
-      (collection) => flatAvailableCollections.includes(collection)
-    );
-    
-    setSelectedCollections(validSelectedCollections);
-    form.setValue("collections", validSelectedCollections);
+    if (selectedDataSources.length > 0) {
+      fetchCollections();
+    } else {
+      setAvailableCollections({});
+      setSourceSchemas({});
+    }
   }, [selectedDataSources, dataSources]);
 
   // Handle data source selection
@@ -111,6 +169,43 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
     
     setSelectedCollections(newSelectedCollections);
     form.setValue("collections", newSelectedCollections);
+    
+    // Auto-generate a simple query when collections are selected
+    if (newSelectedCollections.length > 0 && form.getValues("query") === "") {
+      const collection = newSelectedCollections[0];
+      generateSampleQuery(collection);
+    }
+  };
+  
+  // Generate a simple sample query based on selected collection
+  const generateSampleQuery = (collectionName: string) => {
+    // Find which data source this collection belongs to
+    let dataSourceId: number | null = null;
+    let fields: string[] = ["*"];
+    
+    // Look through available collections to find the source
+    for (const [sourceName, collections] of Object.entries(availableCollections)) {
+      if (collections.includes(collectionName)) {
+        // Find the data source ID
+        const source = dataSources.find(ds => ds.name === sourceName);
+        if (source) {
+          dataSourceId = source.id;
+        }
+        break;
+      }
+    }
+    
+    // If we have schema information, use specific fields
+    if (dataSourceId && sourceSchemas[dataSourceId] && sourceSchemas[dataSourceId][collectionName]) {
+      const schema = sourceSchemas[dataSourceId][collectionName];
+      if (schema.fields && Array.isArray(schema.fields)) {
+        fields = schema.fields.slice(0, 5).map((f: any) => f.name);
+      }
+    }
+    
+    // Create a simple SELECT query
+    const sampleQuery = `SELECT ${fields.join(', ')} FROM ${collectionName} LIMIT 10`;
+    form.setValue("query", sampleQuery);
   };
 
   // Handle loading a saved query
@@ -127,6 +222,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
       });
       setSelectedDataSources([]);
       setSelectedCollections([]);
+      setQueryParameters([]);
       return;
     }
     
@@ -149,11 +245,65 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
     setSelectedDataSources(Array.isArray(query.dataSources) ? query.dataSources : []);
     setSelectedCollections(Array.isArray(query.collections) ? query.collections : []);
     
+    // Extract parameters from the query
+    extractQueryParameters(query.query);
+    
     toast({
       title: "Query Loaded",
       description: `Loaded query: ${query.name}`,
     });
   };
+  
+  // Extract parameters from the query (look for :paramName patterns)
+  const extractQueryParameters = (query: string) => {
+    const paramRegex = /:([a-zA-Z0-9_]+)/g;
+    const matches = query.match(paramRegex);
+    
+    if (matches) {
+      const uniqueParams = [...new Set(matches)];
+      const newParams = uniqueParams.map(param => ({
+        name: param.substring(1), // Remove the leading :
+        value: ""
+      }));
+      setQueryParameters(newParams);
+    } else {
+      setQueryParameters([]);
+    }
+  };
+  
+  // Update parameter value
+  const updateParameterValue = (index: number, value: string) => {
+    const newParams = [...queryParameters];
+    newParams[index].value = value;
+    setQueryParameters(newParams);
+  };
+  
+  // Add a new parameter
+  const addParameter = () => {
+    setQueryParameters([...queryParameters, { name: '', value: '' }]);
+  };
+  
+  // Remove a parameter
+  const removeParameter = (index: number) => {
+    const newParams = [...queryParameters];
+    newParams.splice(index, 1);
+    setQueryParameters(newParams);
+  };
+  
+  // Update parameter name
+  const updateParameterName = (index: number, name: string) => {
+    const newParams = [...queryParameters];
+    newParams[index].name = name;
+    setQueryParameters(newParams);
+  };
+  
+  // When query changes, extract parameters
+  useEffect(() => {
+    const query = form.getValues("query");
+    if (query) {
+      extractQueryParameters(query);
+    }
+  }, [form.watch("query")]);
 
   return (
     <Form {...form}>
@@ -176,7 +326,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
                         <SelectValue placeholder="Load Query" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">New Query</SelectItem>
+                        <SelectItem value="new">New Query</SelectItem>
                         {savedQueries.map((query) => (
                           <SelectItem key={query.id} value={String(query.id)}>
                             {query.name}
@@ -271,22 +421,81 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Query Builder</FormLabel>
-                  <div className="border border-gray-300 rounded-md overflow-hidden">
-                    <div className="bg-gray-50 px-3 py-2 border-b border-gray-300 flex space-x-2">
-                      <Button type="button" size="sm" variant="secondary" className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded">Select</Button>
-                      <Button type="button" size="sm" variant="ghost" className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 rounded">Join</Button>
-                      <Button type="button" size="sm" variant="ghost" className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 rounded">Where</Button>
-                      <Button type="button" size="sm" variant="ghost" className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 rounded">Group</Button>
-                      <Button type="button" size="sm" variant="ghost" className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 rounded">Order</Button>
-                    </div>
-                    <FormControl>
-                      <textarea
-                        {...field}
-                        className="p-3 font-mono text-sm bg-gray-800 text-gray-200 h-48 w-full"
-                        placeholder="SELECT u.displayName, o.orderId, o.orderDate, t.amount, t.currency FROM users u JOIN orders o ON u.uid = o.userId JOIN transactions t ON o.orderId = t.orderId WHERE u.uid = :userId"
-                      />
-                    </FormControl>
-                  </div>
+                  <Tabs defaultValue="builder" value={activeTab} onValueChange={setActiveTab}>
+                    <TabsList className="mb-2 grid grid-cols-2">
+                      <TabsTrigger value="builder">SQL Query</TabsTrigger>
+                      <TabsTrigger value="params">Parameters</TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="builder">
+                      <div className="border border-gray-300 rounded-md overflow-hidden">
+                        <div className="bg-gray-50 px-3 py-2 border-b border-gray-300 flex space-x-2">
+                          <Button type="button" size="sm" variant="secondary" className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded">Select</Button>
+                          <Button type="button" size="sm" variant="ghost" className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 rounded">From</Button>
+                          <Button type="button" size="sm" variant="ghost" className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 rounded">Where</Button>
+                          <Button type="button" size="sm" variant="ghost" className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 rounded">Order By</Button>
+                          <Button type="button" size="sm" variant="ghost" className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 rounded">Limit</Button>
+                        </div>
+                        <FormControl>
+                          <textarea
+                            {...field}
+                            className="p-3 font-mono text-sm bg-gray-800 text-gray-200 h-48 w-full"
+                            placeholder="SELECT users.name, orders.orderId, orders.orderDate FROM users JOIN orders ON users.uid = orders.userId WHERE users.uid = :userId LIMIT 10"
+                          />
+                        </FormControl>
+                      </div>
+                    </TabsContent>
+                    
+                    <TabsContent value="params">
+                      <div className="border border-gray-300 rounded-md p-3">
+                        <div className="space-y-2">
+                          {queryParameters.length === 0 ? (
+                            <div className="text-sm text-gray-500 text-center py-4">
+                              No parameters found in the query.<br />
+                              Add parameters in your query using ':paramName' syntax.
+                            </div>
+                          ) : (
+                            queryParameters.map((param, index) => (
+                              <div key={index} className="flex space-x-2 items-center">
+                                <div className="w-1/3">
+                                  <Input 
+                                    value={param.name}
+                                    onChange={(e) => updateParameterName(index, e.target.value)}
+                                    placeholder="Parameter name"
+                                  />
+                                </div>
+                                <div className="w-2/3 flex space-x-2">
+                                  <Input 
+                                    value={param.value}
+                                    onChange={(e) => updateParameterValue(index, e.target.value)}
+                                    placeholder="Parameter value"
+                                  />
+                                  <Button 
+                                    type="button" 
+                                    variant="ghost" 
+                                    size="sm"
+                                    onClick={() => removeParameter(index)}
+                                    className="text-red-500"
+                                  >
+                                    &times;
+                                  </Button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                          <Button 
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={addParameter}
+                            className="mt-2"
+                          >
+                            Add Parameter
+                          </Button>
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
                   <FormMessage />
                 </FormItem>
               )}

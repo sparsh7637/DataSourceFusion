@@ -1,187 +1,479 @@
-import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Zap, Save } from "lucide-react";
-import QueryForm from "@/components/query-builder/query-form";
-import ResultsTable from "@/components/results/results-table";
-import { useToast } from "@/hooks/use-toast";
+import { Separator } from "@/components/ui/separator";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
-import { queryClient } from "@/lib/queryClient";
+import QueryForm from "@/components/query-builder/query-form";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ExternalLink, AlertTriangle, ChevronRight, Code, Database, Check } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { useLocation } from "wouter";
+import type { DataSource, Query } from "@shared/schema";
 
 export default function QueryBuilder() {
   const { toast } = useToast();
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [results, setResults] = useState<any | null>(null);
-  const [queryFormData, setQueryFormData] = useState<any | null>(null);
-  
+  const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
+  const [currentQuery, setCurrentQuery] = useState<any>({
+    name: "",
+    dataSources: [],
+    collections: [],
+    query: "",
+    federationStrategy: "virtual",
+    params: {},
+  });
+  const [queryError, setQueryError] = useState<string | null>(null);
+  const [queryExecutionResults, setQueryExecutionResults] = useState<any>(null);
+  const [isEditing, setIsEditing] = useState<boolean>(true);
+  const [selectedQueryId, setSelectedQueryId] = useState<number | null>(null);
+
   // Fetch data sources
   const { data: dataSources = [], isLoading: isLoadingDataSources } = useQuery({
-    queryKey: ["/api/data-sources"],
+    queryKey: ['/api/data-sources'],
+    enabled: true,
   });
 
-  // Fetch existing queries
-  const { data: savedQueries = [], isLoading: isLoadingQueries } = useQuery({
-    queryKey: ["/api/queries"],
+  // Fetch saved queries
+  const { data: savedQueries = [], isLoading: isLoadingSavedQueries } = useQuery({
+    queryKey: ['/api/queries'],
+    enabled: true,
   });
 
-  const isLoading = isLoadingDataSources || isLoadingQueries;
-
-  const handleQueryChange = (formData: any) => {
-    setQueryFormData(formData);
-  };
-
-  const executeQuery = async () => {
-    if (!queryFormData || !queryFormData.query) {
+  // Create a new query
+  const createQueryMutation = useMutation({
+    mutationFn: async (query: any) => {
+      const response = await apiRequest('POST', '/api/queries', query);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/queries'] });
+      toast({
+        title: "Query Created",
+        description: "Your query has been saved successfully!",
+      });
+      setIsEditing(false);
+    },
+    onError: (error: any) => {
       toast({
         title: "Error",
-        description: "Please provide a query to execute",
+        description: error.message || "Failed to create query",
         variant: "destructive",
       });
-      return;
-    }
+    },
+  });
 
-    setIsExecuting(true);
-    setResults(null);
-    
-    try {
-      const payload = {
-        query: queryFormData.query,
-        params: queryFormData.params || {},
-      };
-      
-      const response = await apiRequest("POST", "/api/execute-query", payload);
-      const data = await response.json();
-      setResults(data);
-      
+  // Update an existing query
+  const updateQueryMutation = useMutation({
+    mutationFn: async (query: any) => {
+      const response = await apiRequest('PUT', `/api/queries/${query.id}`, query);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/queries'] });
+      toast({
+        title: "Query Updated",
+        description: "Your query has been updated successfully!",
+      });
+      setIsEditing(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update query",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Execute query
+  const executeQueryMutation = useMutation({
+    mutationFn: async (data: { queryId?: number; query?: any; params?: any }) => {
+      const response = await apiRequest('POST', '/api/execute-query', data);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setQueryExecutionResults(data);
       toast({
         title: "Query Executed",
-        description: `Query completed in ${data.executionTime}ms`,
+        description: `Retrieved ${data.results.length} results in ${data.executionTime}ms`,
       });
-    } catch (error) {
-      console.error("Error executing query:", error);
+    },
+    onError: (error: any) => {
+      setQueryError(error.message || "Failed to execute query");
       toast({
-        title: "Error",
-        description: "Failed to execute query. Please try again.",
+        title: "Query Execution Failed",
+        description: error.message || "An error occurred while executing the query",
         variant: "destructive",
       });
-    } finally {
-      setIsExecuting(false);
-    }
+    },
+  });
+
+  // Handle form changes
+  const handleQueryFormChange = (formData: any) => {
+    setCurrentQuery(formData);
+    // Clear any previous errors
+    setQueryError(null);
   };
 
-  const saveQuery = async () => {
-    if (!queryFormData || !queryFormData.name || !queryFormData.query) {
+  // Handle save query
+  const handleSaveQuery = () => {
+    if (!currentQuery.name || !currentQuery.query || currentQuery.dataSources.length === 0) {
       toast({
-        title: "Error",
-        description: "Please provide a name and query to save",
+        title: "Validation Error",
+        description: "Please provide a name, query, and select at least one data source",
         variant: "destructive",
       });
       return;
     }
 
-    setIsSaving(true);
-    
-    try {
-      const payload = {
-        name: queryFormData.name,
-        query: queryFormData.query,
-        dataSources: queryFormData.dataSources || [],
-        collections: queryFormData.collections || [],
-        federationStrategy: queryFormData.federationStrategy || "virtual",
-      };
-      
-      await apiRequest("POST", "/api/queries", payload);
-      
-      toast({
-        title: "Query Saved",
-        description: "Your query has been saved successfully",
+    if (selectedQueryId) {
+      // Update existing query
+      updateQueryMutation.mutate({
+        id: selectedQueryId,
+        ...currentQuery,
       });
-      
-      // Refresh queries list
-      queryClient.invalidateQueries({ queryKey: ["/api/queries"] });
-    } catch (error) {
-      console.error("Error saving query:", error);
+    } else {
+      // Create new query
+      createQueryMutation.mutate(currentQuery);
+    }
+  };
+
+  // Handle execute query
+  const handleExecuteQuery = () => {
+    if (!currentQuery.query) {
       toast({
-        title: "Error",
-        description: "Failed to save query. Please try again.",
+        title: "Validation Error",
+        description: "Please enter a query to execute",
         variant: "destructive",
       });
-    } finally {
-      setIsSaving(false);
+      return;
+    }
+
+    setQueryError(null);
+    
+    // If we have a saved query, use its ID
+    if (selectedQueryId) {
+      executeQueryMutation.mutate({ 
+        queryId: selectedQueryId,
+        params: currentQuery.params
+      });
+    } else {
+      // For unsaved queries, send the full query object
+      executeQueryMutation.mutate({
+        query: currentQuery.query,
+        dataSources: currentQuery.dataSources,
+        federationStrategy: currentQuery.federationStrategy,
+        params: currentQuery.params
+      });
+    }
+  };
+
+  // Handle view results
+  const handleViewResults = () => {
+    // Store the results in local storage for the results page
+    if (queryExecutionResults) {
+      localStorage.setItem('queryResults', JSON.stringify(queryExecutionResults));
+      navigate('/results');
     }
   };
 
   return (
-    <>
-      <Card className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-gray-800">Query Builder</h3>
-          <div className="flex space-x-2">
+    <div className="container mx-auto py-6">
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Query Builder</h1>
+          <p className="text-muted-foreground">
+            Create, save, and execute federated queries across data sources
+          </p>
+        </div>
+        <div className="flex space-x-2">
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              setCurrentQuery({
+                name: "",
+                dataSources: [],
+                collections: [],
+                query: "",
+                federationStrategy: "virtual",
+                params: {},
+              });
+              setSelectedQueryId(null);
+              setIsEditing(true);
+              setQueryExecutionResults(null);
+              setQueryError(null);
+            }}
+          >
+            New Query
+          </Button>
+          {!isEditing && (
             <Button
               variant="outline"
-              className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium"
-              onClick={saveQuery}
-              disabled={isSaving || !queryFormData}
+              onClick={() => setIsEditing(true)}
             >
-              {isSaving ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-700 mr-1"></div>
-              ) : (
-                <Save className="h-4 w-4 mr-1" />
-              )}
-              Save Query
+              Edit Query
             </Button>
-            <Button
-              className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
-              onClick={executeQuery}
-              disabled={isExecuting || !queryFormData}
-            >
-              {isExecuting ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-1"></div>
-              ) : (
-                <Zap className="h-4 w-4 mr-1" />
-              )}
-              Execute
-            </Button>
-          </div>
+          )}
         </div>
-        
-        {isLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600 mb-2"></div>
-              <p className="text-gray-500">Loading...</p>
-            </div>
-          </div>
-        ) : (
-          <QueryForm 
-            dataSources={dataSources}
-            savedQueries={savedQueries}
-            onChange={handleQueryChange}
-          />
-        )}
-      </Card>
+      </div>
 
-      {results && (
-        <Card className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">Results Preview</h3>
-          </div>
-          
-          <ResultsTable 
-            results={results.results} 
-            executionDetails={{
-              executionTime: results.executionTime,
-              cacheHit: results.cacheHit,
-              lastUpdated: results.lastUpdated,
-              nextUpdate: results.nextUpdate,
-              sourcesUsed: queryFormData?.dataSources?.length || 0,
-              federationType: queryFormData?.federationStrategy || "virtual"
-            }}
-          />
-        </Card>
-      )}
-    </>
+      <div className="grid grid-cols-1 gap-6">
+        {isLoadingDataSources || isLoadingSavedQueries ? (
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-1/2" />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            {isEditing ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Build Your Query</CardTitle>
+                  <CardDescription>
+                    Select data sources, collections, and write your query
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <QueryForm
+                    dataSources={dataSources as DataSource[]}
+                    savedQueries={savedQueries as Query[]}
+                    onChange={handleQueryFormChange}
+                  />
+                </CardContent>
+                <CardFooter className="flex justify-between pt-4 border-t">
+                  <Button 
+                    variant="secondary" 
+                    onClick={handleSaveQuery}
+                    disabled={createQueryMutation.isPending || updateQueryMutation.isPending}
+                  >
+                    {createQueryMutation.isPending || updateQueryMutation.isPending ? "Saving..." : "Save Query"}
+                  </Button>
+                  <Button 
+                    onClick={handleExecuteQuery}
+                    disabled={executeQueryMutation.isPending}
+                  >
+                    {executeQueryMutation.isPending ? "Executing..." : "Execute Query"}
+                  </Button>
+                </CardFooter>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{currentQuery.name}</CardTitle>
+                  <CardDescription>
+                    {`Query using ${currentQuery.federationStrategy} federation strategy across ${currentQuery.dataSources.length} data sources`}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="rounded-md bg-secondary/50 p-4">
+                      <pre className="text-sm font-mono whitespace-pre-wrap">{currentQuery.query}</pre>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2">
+                      <div className="text-sm font-medium mr-2">Data Sources:</div>
+                      {currentQuery.dataSources.map((sourceId: number) => {
+                        const source = dataSources.find((s: DataSource) => s.id === sourceId);
+                        return source ? (
+                          <span key={sourceId} className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
+                            {source.name}
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                    
+                    {currentQuery.collections && currentQuery.collections.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        <div className="text-sm font-medium mr-2">Collections:</div>
+                        {currentQuery.collections.map((collection: string) => (
+                          <span key={collection} className="px-2 py-1 bg-secondary/20 text-secondary-foreground text-xs rounded-full">
+                            {collection}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {currentQuery.params && Object.keys(currentQuery.params).length > 0 && (
+                      <Accordion type="single" collapsible className="w-full">
+                        <AccordionItem value="parameters">
+                          <AccordionTrigger className="text-sm font-medium">
+                            Parameters
+                          </AccordionTrigger>
+                          <AccordionContent>
+                            <div className="grid grid-cols-2 gap-2">
+                              {Object.entries(currentQuery.params).map(([key, value]: [string, any]) => (
+                                <div key={key} className="flex justify-between p-2 bg-muted rounded-md">
+                                  <span className="font-mono text-xs">{key}</span>
+                                  <span className="font-mono text-xs">{JSON.stringify(value)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      </Accordion>
+                    )}
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between pt-4 border-t">
+                  <Button 
+                    variant="secondary"
+                    onClick={() => setIsEditing(true)}
+                  >
+                    Edit Query
+                  </Button>
+                  <div className="flex space-x-2">
+                    <Button 
+                      onClick={handleExecuteQuery}
+                      disabled={executeQueryMutation.isPending}
+                    >
+                      {executeQueryMutation.isPending ? "Executing..." : "Execute Query"}
+                    </Button>
+                    {queryExecutionResults && (
+                      <Button 
+                        variant="outline"
+                        onClick={handleViewResults}
+                      >
+                        View Results <ChevronRight className="ml-1 h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </CardFooter>
+              </Card>
+            )}
+
+            {queryError && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Query Execution Error</AlertTitle>
+                <AlertDescription>
+                  {queryError}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {queryExecutionResults && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Database className="mr-2 h-5 w-5" />
+                    Query Results
+                  </CardTitle>
+                  <CardDescription>
+                    {`Retrieved ${queryExecutionResults.results.length} records in ${queryExecutionResults.executionTime}ms`}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-4 text-sm">
+                      <div className="flex items-center">
+                        <span className="font-medium mr-2">Last Updated:</span>
+                        <span>{new Date(queryExecutionResults.lastUpdated).toLocaleString()}</span>
+                      </div>
+                      {queryExecutionResults.cacheHit && (
+                        <div className="flex items-center text-green-600">
+                          <Check className="mr-1 h-4 w-4" />
+                          <span>Cache Hit</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <Tabs defaultValue="preview">
+                      <TabsList>
+                        <TabsTrigger value="preview">Preview</TabsTrigger>
+                        <TabsTrigger value="json">JSON</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="preview">
+                        <div className="border rounded-md overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-muted">
+                                {queryExecutionResults.results.length > 0 &&
+                                  Object.keys(queryExecutionResults.results[0]).map((key) => (
+                                    <th key={key} className="px-4 py-2 text-left font-medium">
+                                      {key}
+                                    </th>
+                                  ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {queryExecutionResults.results.slice(0, 5).map((row: any, i: number) => (
+                                <tr key={i} className="border-t">
+                                  {Object.values(row).map((value: any, j: number) => (
+                                    <td key={j} className="px-4 py-2">
+                                      {typeof value === 'object' 
+                                        ? JSON.stringify(value).substring(0, 50) + (JSON.stringify(value).length > 50 ? '...' : '')
+                                        : String(value).substring(0, 50) + (String(value).length > 50 ? '...' : '')
+                                      }
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {queryExecutionResults.results.length > 5 && (
+                            <div className="p-2 text-center text-sm text-muted-foreground">
+                              Showing 5 of {queryExecutionResults.results.length} results. 
+                              <Button 
+                                variant="link" 
+                                onClick={handleViewResults}
+                                className="ml-1"
+                              >
+                                View all
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </TabsContent>
+                      <TabsContent value="json">
+                        <div className="relative rounded-md bg-muted/50 p-4">
+                          <pre className="text-sm font-mono whitespace-pre-wrap overflow-auto max-h-80">
+                            {JSON.stringify(queryExecutionResults.results, null, 2)}
+                          </pre>
+                          <div className="absolute top-2 right-2">
+                            <Button 
+                              size="sm" 
+                              variant="ghost"
+                              onClick={() => {
+                                navigator.clipboard.writeText(JSON.stringify(queryExecutionResults.results, null, 2));
+                                toast({
+                                  title: "Copied",
+                                  description: "JSON copied to clipboard",
+                                });
+                              }}
+                            >
+                              <Code className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+                  </div>
+                </CardContent>
+                <CardFooter className="justify-end pt-4 border-t">
+                  <Button 
+                    onClick={handleViewResults}
+                  >
+                    View Full Results
+                  </Button>
+                </CardFooter>
+              </Card>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }

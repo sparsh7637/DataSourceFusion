@@ -1,376 +1,470 @@
-import type { Express } from "express";
-import { createServer, type Server } from "http";
+import { Express, Request, Response, NextFunction } from "express";
+import { createServer, Server } from "http";
 import { storage } from "./storage";
 import { queryFederationService } from "./services/query-federation";
+import { z } from "zod";
 import {
-  insertDataSourceSchema,
+  dataSourceConfigSchema,
+  mappingRuleSchema,
   schemaMappingRequestSchema,
   queryRequestSchema,
   executeQueryRequestSchema
-} from "@shared/schema";
-import z from "zod";
-import { ZodError } from "zod-validation-error";
+} from "../shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // API routes for data sources
-  app.get("/api/data-sources", async (req, res) => {
-    try {
-      const dataSources = await storage.getDataSources();
-      res.json(dataSources);
-    } catch (error) {
-      console.error("Error fetching data sources:", error);
-      res.status(500).json({ message: "Failed to fetch data sources" });
-    }
+  const server = createServer(app);
+
+  // Data Sources
+  app.get("/api/data-sources", async (req: Request, res: Response) => {
+    const sources = await storage.getDataSources();
+    res.json(sources);
   });
 
-  app.get("/api/data-sources/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const dataSource = await storage.getDataSource(id);
-      if (!dataSource) {
-        return res.status(404).json({ message: "Data source not found" });
-      }
-      res.json(dataSource);
-    } catch (error) {
-      console.error("Error fetching data source:", error);
-      res.status(500).json({ message: "Failed to fetch data source" });
+  app.get("/api/data-sources/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const source = await storage.getDataSource(id);
+    
+    if (!source) {
+      return res.status(404).json({ error: "Data source not found" });
     }
+    
+    res.json(source);
   });
 
-  app.post("/api/data-sources", async (req, res) => {
+  app.post("/api/data-sources", async (req: Request, res: Response) => {
     try {
-      const validatedData = insertDataSourceSchema.parse(req.body);
-      const dataSource = await storage.createDataSource(validatedData);
+      const body = req.body;
       
-      // Connect to the data source
-      const connected = await queryFederationService.addDataSource(dataSource);
-      if (!connected) {
-        await storage.updateDataSource(dataSource.id, { status: "error" });
-        return res.status(400).json({ message: "Failed to connect to data source" });
+      // Validate the config based on type
+      if (body.type === 'firebase') {
+        const configSchema = z.object({
+          projectId: z.string().min(1, "Project ID is required"),
+          apiKey: z.string().optional(),
+          authDomain: z.string().optional(),
+        });
+        
+        configSchema.parse(body.config);
+      } else if (body.type === 'mongodb') {
+        const configSchema = z.object({
+          uri: z.string().min(1, "MongoDB URI is required"),
+          database: z.string().min(1, "Database name is required"),
+        });
+        
+        configSchema.parse(body.config);
+      } else {
+        return res.status(400).json({ error: "Invalid data source type" });
       }
       
-      res.status(201).json(dataSource);
+      const newSource = await storage.createDataSource({
+        name: body.name,
+        type: body.type,
+        config: body.config,
+        status: body.status || "connected",
+        collections: body.collections || [],
+      });
+      
+      // Add to query federation service
+      await queryFederationService.addDataSource(newSource);
+      
+      res.status(201).json(newSource);
     } catch (error) {
       console.error("Error creating data source:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid data source configuration", errors: error.errors });
-      }
-      res.status(500).json({ message: "Failed to create data source" });
+      res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.put("/api/data-sources/:id", async (req, res) => {
+  app.put("/api/data-sources/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const existingSource = await storage.getDataSource(id);
-      if (!existingSource) {
-        return res.status(404).json({ message: "Data source not found" });
+      const body = req.body;
+      
+      // Validate the config based on type
+      if (body.type === 'firebase') {
+        const configSchema = z.object({
+          projectId: z.string().min(1, "Project ID is required"),
+          apiKey: z.string().optional(),
+          authDomain: z.string().optional(),
+        });
+        
+        configSchema.parse(body.config);
+      } else if (body.type === 'mongodb') {
+        const configSchema = z.object({
+          uri: z.string().min(1, "MongoDB URI is required"),
+          database: z.string().min(1, "Database name is required"),
+        });
+        
+        configSchema.parse(body.config);
       }
       
-      const validatedData = insertDataSourceSchema.partial().parse(req.body);
-      const updatedSource = await storage.updateDataSource(id, validatedData);
+      const updatedSource = await storage.updateDataSource(id, {
+        name: body.name,
+        type: body.type,
+        config: body.config,
+        status: body.status,
+        collections: body.collections,
+      });
       
-      // If connection details changed, reconnect
-      if (validatedData.config || validatedData.type) {
-        await queryFederationService.removeDataSource(id);
-        await queryFederationService.addDataSource(updatedSource!);
+      if (!updatedSource) {
+        return res.status(404).json({ error: "Data source not found" });
       }
+      
+      // Update in query federation service
+      await queryFederationService.removeDataSource(id);
+      await queryFederationService.addDataSource(updatedSource);
       
       res.json(updatedSource);
     } catch (error) {
       console.error("Error updating data source:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid data source configuration", errors: error.errors });
-      }
-      res.status(500).json({ message: "Failed to update data source" });
+      res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.delete("/api/data-sources/:id", async (req, res) => {
+  app.delete("/api/data-sources/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const existingSource = await storage.getDataSource(id);
-      if (!existingSource) {
-        return res.status(404).json({ message: "Data source not found" });
+      const success = await storage.deleteDataSource(id);
+      
+      if (!success) {
+        return res.status(404).json({ error: "Data source not found" });
       }
       
-      // Remove from query federation service first
+      // Remove from query federation service
       await queryFederationService.removeDataSource(id);
-      
-      // Then remove from storage
-      await storage.deleteDataSource(id);
       
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting data source:", error);
-      res.status(500).json({ message: "Failed to delete data source" });
+      res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  // API routes for schema mappings
-  app.get("/api/schema-mappings", async (req, res) => {
-    try {
-      const mappings = await storage.getSchemaMappings();
-      res.json(mappings);
-    } catch (error) {
-      console.error("Error fetching schema mappings:", error);
-      res.status(500).json({ message: "Failed to fetch schema mappings" });
-    }
+  // Schema Mappings
+  app.get("/api/schema-mappings", async (req: Request, res: Response) => {
+    const mappings = await storage.getSchemaMappings();
+    res.json(mappings);
   });
 
-  app.get("/api/schema-mappings/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const mapping = await storage.getSchemaMapping(id);
-      if (!mapping) {
-        return res.status(404).json({ message: "Schema mapping not found" });
-      }
-      res.json(mapping);
-    } catch (error) {
-      console.error("Error fetching schema mapping:", error);
-      res.status(500).json({ message: "Failed to fetch schema mapping" });
+  app.get("/api/schema-mappings/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const mapping = await storage.getSchemaMapping(id);
+    
+    if (!mapping) {
+      return res.status(404).json({ error: "Schema mapping not found" });
     }
+    
+    res.json(mapping);
   });
 
-  app.post("/api/schema-mappings", async (req, res) => {
+  app.post("/api/schema-mappings", async (req: Request, res: Response) => {
     try {
-      const validatedData = schemaMappingRequestSchema.parse(req.body);
+      const body = req.body;
       
-      // Check if source and target exist
-      const sourceDataSource = await storage.getDataSource(validatedData.sourceId);
-      const targetDataSource = await storage.getDataSource(validatedData.targetId);
-      
-      if (!sourceDataSource || !targetDataSource) {
-        return res.status(400).json({ message: "Source or target data source not found" });
+      // Validate the mapping rules
+      if (body.mappingRules && Array.isArray(body.mappingRules)) {
+        for (const rule of body.mappingRules) {
+          mappingRuleSchema.parse(rule);
+        }
       }
       
-      const mapping = await storage.createSchemaMapping(validatedData);
+      const newMapping = await storage.createSchemaMapping({
+        name: body.name,
+        sourceId: body.sourceId,
+        sourceCollection: body.sourceCollection,
+        targetId: body.targetId,
+        targetCollection: body.targetCollection,
+        status: body.status || "active",
+        mappingRules: body.mappingRules || [],
+      });
       
-      // Add mapping to query federation service
-      await queryFederationService.addMapping(mapping);
+      // Add to query federation service
+      await queryFederationService.addMapping(newMapping);
       
-      res.status(201).json(mapping);
+      res.status(201).json(newMapping);
     } catch (error) {
       console.error("Error creating schema mapping:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid schema mapping configuration", errors: error.errors });
-      }
-      res.status(500).json({ message: "Failed to create schema mapping" });
+      res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.put("/api/schema-mappings/:id", async (req, res) => {
+  app.put("/api/schema-mappings/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const existingMapping = await storage.getSchemaMapping(id);
-      if (!existingMapping) {
-        return res.status(404).json({ message: "Schema mapping not found" });
+      const body = req.body;
+      
+      // Validate the mapping rules
+      if (body.mappingRules && Array.isArray(body.mappingRules)) {
+        for (const rule of body.mappingRules) {
+          mappingRuleSchema.parse(rule);
+        }
       }
       
-      const validatedData = schemaMappingRequestSchema.partial().parse(req.body);
-      const updatedMapping = await storage.updateSchemaMapping(id, validatedData);
+      const updatedMapping = await storage.updateSchemaMapping(id, {
+        name: body.name,
+        sourceId: body.sourceId,
+        sourceCollection: body.sourceCollection,
+        targetId: body.targetId,
+        targetCollection: body.targetCollection,
+        status: body.status,
+        mappingRules: body.mappingRules,
+      });
+      
+      if (!updatedMapping) {
+        return res.status(404).json({ error: "Schema mapping not found" });
+      }
       
       // Update in query federation service
       await queryFederationService.removeMapping(id);
-      await queryFederationService.addMapping(updatedMapping!);
+      await queryFederationService.addMapping(updatedMapping);
       
       res.json(updatedMapping);
     } catch (error) {
       console.error("Error updating schema mapping:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid schema mapping configuration", errors: error.errors });
-      }
-      res.status(500).json({ message: "Failed to update schema mapping" });
+      res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.delete("/api/schema-mappings/:id", async (req, res) => {
+  app.delete("/api/schema-mappings/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const existingMapping = await storage.getSchemaMapping(id);
-      if (!existingMapping) {
-        return res.status(404).json({ message: "Schema mapping not found" });
+      const success = await storage.deleteSchemaMapping(id);
+      
+      if (!success) {
+        return res.status(404).json({ error: "Schema mapping not found" });
       }
       
-      // Remove from query federation service first
+      // Remove from query federation service
       await queryFederationService.removeMapping(id);
-      
-      // Then remove from storage
-      await storage.deleteSchemaMapping(id);
       
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting schema mapping:", error);
-      res.status(500).json({ message: "Failed to delete schema mapping" });
+      res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  // API routes for queries
-  app.get("/api/queries", async (req, res) => {
-    try {
-      const queries = await storage.getQueries();
-      res.json(queries);
-    } catch (error) {
-      console.error("Error fetching queries:", error);
-      res.status(500).json({ message: "Failed to fetch queries" });
-    }
+  // Queries
+  app.get("/api/queries", async (req: Request, res: Response) => {
+    const queries = await storage.getQueries();
+    res.json(queries);
   });
 
-  app.get("/api/queries/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const query = await storage.getQuery(id);
-      if (!query) {
-        return res.status(404).json({ message: "Query not found" });
-      }
-      res.json(query);
-    } catch (error) {
-      console.error("Error fetching query:", error);
-      res.status(500).json({ message: "Failed to fetch query" });
+  app.get("/api/queries/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const query = await storage.getQuery(id);
+    
+    if (!query) {
+      return res.status(404).json({ error: "Query not found" });
     }
+    
+    res.json(query);
   });
 
-  app.post("/api/queries", async (req, res) => {
+  app.post("/api/queries", async (req: Request, res: Response) => {
     try {
-      const validatedData = queryRequestSchema.parse(req.body);
+      const body = req.body;
+      const validation = await queryFederationService.validateQuery(body.query);
       
-      // Validate the query syntax
-      const validation = await queryFederationService.validateQuery(validatedData.query);
-      if (!validation.valid) {
-        return res.status(400).json({ message: "Invalid query syntax", errors: validation.errors });
+      if (!validation.isValid) {
+        return res.status(400).json({ error: `Invalid query: ${validation.error}` });
       }
       
-      const query = await storage.createQuery(validatedData);
-      res.status(201).json(query);
+      const newQuery = await storage.createQuery({
+        name: body.name,
+        query: body.query,
+        dataSources: body.dataSources || [],
+        collections: body.collections || [],
+        federationStrategy: body.federationStrategy || "virtual",
+      });
+      
+      res.status(201).json(newQuery);
     } catch (error) {
       console.error("Error creating query:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid query configuration", errors: error.errors });
-      }
-      res.status(500).json({ message: "Failed to create query" });
+      res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.put("/api/queries/:id", async (req, res) => {
+  app.put("/api/queries/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const existingQuery = await storage.getQuery(id);
-      if (!existingQuery) {
-        return res.status(404).json({ message: "Query not found" });
-      }
+      const body = req.body;
       
-      const validatedData = queryRequestSchema.partial().parse(req.body);
-      
-      // If query changed, validate the new syntax
-      if (validatedData.query) {
-        const validation = await queryFederationService.validateQuery(validatedData.query);
-        if (!validation.valid) {
-          return res.status(400).json({ message: "Invalid query syntax", errors: validation.errors });
+      if (body.query) {
+        const validation = await queryFederationService.validateQuery(body.query);
+        if (!validation.isValid) {
+          return res.status(400).json({ error: `Invalid query: ${validation.error}` });
         }
       }
       
-      const updatedQuery = await storage.updateQuery(id, validatedData);
+      const updatedQuery = await storage.updateQuery(id, {
+        name: body.name,
+        query: body.query,
+        dataSources: body.dataSources,
+        collections: body.collections,
+        federationStrategy: body.federationStrategy,
+      });
+      
+      if (!updatedQuery) {
+        return res.status(404).json({ error: "Query not found" });
+      }
+      
       res.json(updatedQuery);
     } catch (error) {
       console.error("Error updating query:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid query configuration", errors: error.errors });
-      }
-      res.status(500).json({ message: "Failed to update query" });
+      res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.delete("/api/queries/:id", async (req, res) => {
+  app.delete("/api/queries/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const existingQuery = await storage.getQuery(id);
-      if (!existingQuery) {
-        return res.status(404).json({ message: "Query not found" });
+      const success = await storage.deleteQuery(id);
+      
+      if (!success) {
+        return res.status(404).json({ error: "Query not found" });
       }
       
-      await storage.deleteQuery(id);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting query:", error);
-      res.status(500).json({ message: "Failed to delete query" });
+      res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  // API route for executing queries
-  app.post("/api/execute-query", async (req, res) => {
+  // Query Execution
+  app.post("/api/execute-query", async (req: Request, res: Response) => {
     try {
-      const validatedData = executeQueryRequestSchema.parse(req.body);
-      
-      if (!validatedData.queryId && !validatedData.query) {
-        return res.status(400).json({ message: "Either queryId or query must be provided" });
-      }
+      const body = req.body;
       
       let query;
-      
-      if (validatedData.queryId) {
-        // Execute an existing query
-        query = await storage.getQuery(validatedData.queryId);
+      if (body.queryId) {
+        // Execute existing query by ID
+        query = await storage.getQuery(body.queryId);
         if (!query) {
-          return res.status(404).json({ message: "Query not found" });
+          return res.status(404).json({ error: "Query not found" });
         }
-      } else if (validatedData.query) {
-        // Execute an ad-hoc query
-        const validation = await queryFederationService.validateQuery(validatedData.query);
-        if (!validation.valid) {
-          return res.status(400).json({ message: "Invalid query syntax", errors: validation.errors });
+      } else if (body.query) {
+        // Execute ad-hoc query
+        const validation = await queryFederationService.validateQuery(body.query);
+        if (!validation.isValid) {
+          return res.status(400).json({ error: `Invalid query: ${validation.error}` });
         }
         
         // Create a temporary query object
         query = {
-          id: 0,
+          id: -1,
           name: "Ad-hoc Query",
-          query: validatedData.query,
-          dataSources: [1, 2], // Assume we're using all data sources for ad-hoc queries
-          collections: [],
-          federationStrategy: "virtual",
+          query: body.query,
+          dataSources: body.dataSources || [],
+          collections: body.collections || [],
+          federationStrategy: body.federationStrategy || "virtual",
           createdAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: new Date(),
         };
+      } else {
+        return res.status(400).json({ error: "Either queryId or query must be provided" });
       }
       
-      // Execute the query using the federation service
-      const result = await queryFederationService.executeQuery(query!, validatedData.params);
+      // Execute the query
+      const result = await queryFederationService.executeQuery(query, body.params);
+      
+      // Check if we need to store the result
+      const existingResult = await storage.getQueryResult(query.id);
+      if (existingResult) {
+        await storage.updateQueryResult(existingResult.id, {
+          results: JSON.stringify(result.results),
+          lastUpdated: new Date(),
+        });
+      } else if (query.id !== -1) {
+        // Only store results for saved queries
+        await storage.createQueryResult({
+          queryId: query.id,
+          results: JSON.stringify(result.results),
+          lastUpdated: new Date(),
+        });
+      }
       
       res.json(result);
     } catch (error) {
       console.error("Error executing query:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid request", errors: error.errors });
-      }
-      res.status(500).json({ message: "Failed to execute query" });
+      res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  // API route for getting collection schemas
-  app.get("/api/data-sources/:id/collections/:collectionName/schema", async (req, res) => {
+  // Collection Schema API
+  app.get("/api/data-sources/:id/collections", async (req: Request, res: Response) => {
     try {
       const sourceId = parseInt(req.params.id);
-      const collectionName = req.params.collectionName;
+      const source = await storage.getDataSource(sourceId);
       
-      const dataSource = await storage.getDataSource(sourceId);
-      if (!dataSource) {
-        return res.status(404).json({ message: "Data source not found" });
+      if (!source) {
+        return res.status(404).json({ error: "Data source not found" });
       }
       
+      // Connect to the data source if needed
+      await queryFederationService.addDataSource(source);
+      
+      // Get the service
+      const service = queryFederationService["sourceServices"].get(sourceId);
+      if (!service) {
+        return res.status(400).json({ error: "Could not connect to data source" });
+      }
+      
+      // Get collections
+      const collections = await service.getCollections();
+      res.json(collections);
+    } catch (error) {
+      console.error("Error getting collections:", error);
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
+  app.get("/api/data-sources/:id/collections/:collection/schema", async (req: Request, res: Response) => {
+    try {
+      const sourceId = parseInt(req.params.id);
+      const collectionName = req.params.collection;
+      
       const schema = await queryFederationService.getSourceCollectionSchema(sourceId, collectionName);
+      
       if (!schema) {
-        return res.status(404).json({ message: "Collection schema not found" });
+        return res.status(404).json({ error: "Collection or schema not found" });
       }
       
       res.json(schema);
     } catch (error) {
-      console.error("Error fetching collection schema:", error);
-      res.status(500).json({ message: "Failed to fetch collection schema" });
+      console.error("Error getting collection schema:", error);
+      res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  // Create HTTP server
-  const httpServer = createServer(app);
+  // Search/query in a specific collection (for testing)
+  app.post("/api/data-sources/:id/collections/:collection/query", async (req: Request, res: Response) => {
+    try {
+      const sourceId = parseInt(req.params.id);
+      const collectionName = req.params.collection;
+      const queryParams = req.body;
+      
+      const source = await storage.getDataSource(sourceId);
+      if (!source) {
+        return res.status(404).json({ error: "Data source not found" });
+      }
+      
+      // Connect to the data source if needed
+      await queryFederationService.addDataSource(source);
+      
+      // Get the service
+      const service = queryFederationService["sourceServices"].get(sourceId);
+      if (!service) {
+        return res.status(400).json({ error: "Could not connect to data source" });
+      }
+      
+      // Execute the query
+      const results = await service.executeQuery(collectionName, queryParams);
+      res.json(results);
+    } catch (error) {
+      console.error("Error executing collection query:", error);
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
 
-  return httpServer;
+  return server;
 }

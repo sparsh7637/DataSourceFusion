@@ -1,224 +1,344 @@
-import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, RefreshCw } from "lucide-react";
-import ResultsTable from "@/components/results/results-table";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { ArrowLeft, Database, Code, DownloadIcon, CopyIcon, BarChart3Icon, TableIcon, FilterIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function Results() {
-  const [location] = useLocation();
   const { toast } = useToast();
-  const [queryId, setQueryId] = useState<number | null>(null);
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [results, setResults] = useState<any | null>(null);
-  const [viewMode, setViewMode] = useState("table");
-  
-  // Parse query ID from URL if present
+  const [, navigate] = useLocation();
+  const [queryResults, setQueryResults] = useState<any>(null);
+  const [visibleResults, setVisibleResults] = useState<any[]>([]);
+  const [viewMode, setViewMode] = useState<string>("table");
+  const [filterText, setFilterText] = useState<string>("");
+  const [showSourceInfo, setShowSourceInfo] = useState<boolean>(true);
+  const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
+  const [availableColumns, setAvailableColumns] = useState<string[]>([]);
+
   useEffect(() => {
-    const params = new URLSearchParams(location.split('?')[1]);
-    const id = params.get('queryId');
-    if (id) {
-      setQueryId(parseInt(id));
+    // Load results from localStorage
+    const resultsData = localStorage.getItem("queryResults");
+    if (resultsData) {
+      try {
+        const parsedResults = JSON.parse(resultsData);
+        setQueryResults(parsedResults);
+        
+        if (Array.isArray(parsedResults.results) && parsedResults.results.length > 0) {
+          // Extract available columns from the first result
+          const columns = Object.keys(parsedResults.results[0]);
+          setAvailableColumns(columns);
+          setSelectedColumns(columns);
+          
+          // Set initial visible results
+          setVisibleResults(parsedResults.results);
+        }
+      } catch (error) {
+        console.error("Error parsing results:", error);
+      }
     }
-  }, [location]);
+  }, []);
 
-  // Fetch queries for selection
-  const { data: queries = [], isLoading: isLoadingQueries } = useQuery({
-    queryKey: ["/api/queries"],
-  });
-
-  // Fetch specific query details if ID is provided
-  const { data: selectedQuery, isLoading: isLoadingSelectedQuery } = useQuery({
-    queryKey: ["/api/queries", queryId],
-    enabled: !!queryId,
-  });
-
-  // Auto-execute the selected query once loaded
+  // Apply filters and column selection
   useEffect(() => {
-    if (selectedQuery && !results) {
-      executeQuery(selectedQuery.id);
-    }
-  }, [selectedQuery]);
-
-  const executeQuery = async (id: number) => {
-    setIsExecuting(true);
-    setResults(null);
+    if (!queryResults || !Array.isArray(queryResults.results)) return;
     
-    try {
-      const payload = {
-        queryId: id,
-      };
-      
-      const response = await apiRequest("POST", "/api/execute-query", payload);
-      const data = await response.json();
-      setResults(data);
-      
-      toast({
-        title: "Query Executed",
-        description: `Query completed in ${data.executionTime}ms`,
+    let filtered = [...queryResults.results];
+    
+    // Apply text filter if provided
+    if (filterText) {
+      const lowerFilter = filterText.toLowerCase();
+      filtered = filtered.filter(row => {
+        return Object.values(row).some(value => {
+          if (value === null || value === undefined) return false;
+          return String(value).toLowerCase().includes(lowerFilter);
+        });
       });
-    } catch (error) {
-      console.error("Error executing query:", error);
-      toast({
-        title: "Error",
-        description: "Failed to execute query. Please try again.",
-        variant: "destructive",
+    }
+    
+    setVisibleResults(filtered);
+  }, [queryResults, filterText, selectedColumns]);
+
+  // Handle going back to the query builder
+  const handleBackToBuilder = () => {
+    navigate("/query-builder");
+  };
+
+  // Handle copying results to clipboard
+  const handleCopyResults = () => {
+    if (!visibleResults.length) return;
+    
+    // Create a version with only selected columns
+    const filteredResults = visibleResults.map(row => {
+      const filteredRow: Record<string, any> = {};
+      selectedColumns.forEach(col => {
+        filteredRow[col] = row[col];
       });
-    } finally {
-      setIsExecuting(false);
-    }
+      return filteredRow;
+    });
+    
+    navigator.clipboard.writeText(JSON.stringify(filteredResults, null, 2));
+    
+    toast({
+      title: "Copied to Clipboard",
+      description: `Copied ${filteredResults.length} results to clipboard`,
+    });
   };
 
-  const handleQueryChange = (id: string) => {
-    setQueryId(parseInt(id));
-    setResults(null);
-  };
-
-  const handleRefresh = () => {
-    if (queryId) {
-      executeQuery(queryId);
-    }
-  };
-
-  const handleExport = () => {
-    if (!results?.results) return;
+  // Handle downloading results as JSON
+  const handleDownloadResults = () => {
+    if (!visibleResults.length) return;
     
-    // Create a downloadable JSON file
-    const dataStr = JSON.stringify(results.results, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    // Create a version with only selected columns
+    const filteredResults = visibleResults.map(row => {
+      const filteredRow: Record<string, any> = {};
+      selectedColumns.forEach(col => {
+        filteredRow[col] = row[col];
+      });
+      return filteredRow;
+    });
     
-    const exportFileDefaultName = `query-results-${new Date().toISOString().slice(0, 10)}.json`;
+    const dataStr = JSON.stringify(filteredResults, null, 2);
+    const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(dataStr)}`;
     
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
+    const exportName = "query-results.json";
+    
+    const linkElement = document.createElement("a");
+    linkElement.setAttribute("href", dataUri);
+    linkElement.setAttribute("download", exportName);
     linkElement.click();
   };
 
-  const isLoading = isLoadingQueries || isLoadingSelectedQuery;
+  // Handle column toggle
+  const handleColumnToggle = (column: string) => {
+    if (selectedColumns.includes(column)) {
+      setSelectedColumns(selectedColumns.filter(col => col !== column));
+    } else {
+      setSelectedColumns([...selectedColumns, column]);
+    }
+  };
 
   return (
-    <>
-      <Card className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-gray-800">Query Results</h3>
-          <div className="flex space-x-2">
-            <Select 
-              value={queryId ? String(queryId) : undefined} 
-              onValueChange={handleQueryChange}
-              disabled={isLoading || isExecuting}
-            >
-              <SelectTrigger className="w-[240px]">
-                <SelectValue placeholder="Select a query" />
-              </SelectTrigger>
-              <SelectContent>
-                {queries.map((query) => (
-                  <SelectItem key={query.id} value={String(query.id)}>
-                    {query.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <Button
-              variant="outline"
-              onClick={handleRefresh}
-              disabled={!queryId || isExecuting}
-            >
-              <RefreshCw className="h-4 w-4 mr-1" />
-              Refresh
-            </Button>
-          </div>
+    <div className="container mx-auto py-6">
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex items-center">
+          <Button 
+            variant="ghost"
+            size="sm"
+            onClick={handleBackToBuilder}
+            className="mr-2"
+          >
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            Back to Builder
+          </Button>
+          <h1 className="text-3xl font-bold tracking-tight">Query Results</h1>
         </div>
-        
-        {isLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600 mb-2"></div>
-              <p className="text-gray-500">Loading queries...</p>
-            </div>
-          </div>
-        ) : !queryId ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed border-gray-200 rounded-lg">
-            <div className="rounded-full bg-blue-50 p-3 mb-4">
-              <div className="rounded-full bg-blue-100 p-3">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-            </div>
-            <h3 className="font-medium text-gray-900 mb-1">No Query Selected</h3>
-            <p className="text-gray-500 mb-4 max-w-md">
-              Please select a query from the dropdown above to view its results.
-            </p>
-            <a 
-              href="/query-builder" 
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
-            >
-              Create New Query
-            </a>
-          </div>
-        ) : isExecuting ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600 mb-2"></div>
-              <p className="text-gray-500">Executing query...</p>
-            </div>
-          </div>
-        ) : (
-          results && (
-            <div>
-              <div className="flex justify-between items-center mb-4">
+      </div>
+
+      {queryResults ? (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Database className="mr-2 h-5 w-5" />
+                Results Overview
+              </CardTitle>
+              <CardDescription>
+                {`Retrieved ${queryResults.results.length} records in ${queryResults.executionTime}ms`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-800">
-                    {selectedQuery?.name}
-                  </h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Federation Strategy: {selectedQuery?.federationStrategy}
-                  </p>
+                  <div className="text-sm text-muted-foreground mb-2">Result Details</div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Execution Time:</span>
+                      <span className="text-sm font-medium">{queryResults.executionTime}ms</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Last Updated:</span>
+                      <span className="text-sm font-medium">
+                        {new Date(queryResults.lastUpdated).toLocaleString()}
+                      </span>
+                    </div>
+                    {queryResults.nextUpdate && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">Next Update:</span>
+                        <span className="text-sm font-medium">
+                          {new Date(queryResults.nextUpdate).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Cache Hit:</span>
+                      <span className="text-sm font-medium">
+                        {queryResults.cacheHit ? "Yes" : "No"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex space-x-2">
-                  <Button
-                    variant="outline"
-                    onClick={handleExport}
-                    disabled={!results?.results?.length}
-                  >
-                    <Download className="h-4 w-4 mr-1" />
-                    Export
-                  </Button>
+                
+                <div>
+                  <div className="text-sm text-muted-foreground mb-2">Result Operations</div>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex items-center space-x-2">
+                        <Switch 
+                          id="show-source" 
+                          checked={showSourceInfo} 
+                          onCheckedChange={setShowSourceInfo} 
+                        />
+                        <Label htmlFor="show-source">Show Source Info</Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <Label>View:</Label>
+                        <div className="flex border rounded-md overflow-hidden">
+                          <Button
+                            size="sm"
+                            variant={viewMode === "table" ? "default" : "ghost"}
+                            className="rounded-none"
+                            onClick={() => setViewMode("table")}
+                          >
+                            <TableIcon className="h-4 w-4 mr-1" />
+                            Table
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={viewMode === "json" ? "default" : "ghost"}
+                            className="rounded-none"
+                            onClick={() => setViewMode("json")}
+                          >
+                            <Code className="h-4 w-4 mr-1" />
+                            JSON
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
                   
-                  <Select value={viewMode} onValueChange={setViewMode}>
-                    <SelectTrigger className="w-[140px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="table">Table View</SelectItem>
-                      <SelectItem value="json">JSON View</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <div className="flex flex-col space-y-2">
+                      <Label htmlFor="filter">Filter Results:</Label>
+                      <div className="flex rounded-md overflow-hidden">
+                        <div className="relative flex-grow">
+                          <FilterIcon className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input 
+                            id="filter"
+                            placeholder="Filter by any value..."
+                            className="pl-8"
+                            value={filterText}
+                            onChange={(e) => setFilterText(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               
-              <ResultsTable 
-                results={results.results} 
-                executionDetails={{
-                  executionTime: results.executionTime,
-                  cacheHit: results.cacheHit,
-                  lastUpdated: results.lastUpdated,
-                  nextUpdate: results.nextUpdate,
-                  sourcesUsed: selectedQuery?.dataSources?.length || 0,
-                  federationType: selectedQuery?.federationStrategy
-                }}
-                viewMode={viewMode}
-              />
-            </div>
-          )
-        )}
-      </Card>
-    </>
+              <Separator className="my-4" />
+              
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {visibleResults.length} of {queryResults.results.length} results
+                  </div>
+                  <div className="flex space-x-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={handleCopyResults}
+                    >
+                      <CopyIcon className="h-4 w-4 mr-1" />
+                      Copy
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={handleDownloadResults}
+                    >
+                      <DownloadIcon className="h-4 w-4 mr-1" />
+                      Download
+                    </Button>
+                  </div>
+                </div>
+              
+                {viewMode === "table" ? (
+                  <div className="border rounded-md overflow-auto max-h-[calc(100vh-400px)]">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted sticky top-0">
+                        <tr>
+                          {availableColumns.map(col => (
+                            <th 
+                              key={col} 
+                              className={`px-4 py-2 text-left font-medium ${
+                                selectedColumns.includes(col) ? "" : "opacity-50"
+                              }`}
+                            >
+                              <label className="flex items-center space-x-2 cursor-pointer">
+                                <Switch 
+                                  checked={selectedColumns.includes(col)}
+                                  onCheckedChange={() => handleColumnToggle(col)}
+                                  size="sm"
+                                />
+                                <span>{col}</span>
+                              </label>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleResults.map((row, i) => (
+                          <tr key={i} className="border-t">
+                            {availableColumns.map(col => (
+                              <td 
+                                key={`${i}-${col}`} 
+                                className={`px-4 py-2 ${
+                                  selectedColumns.includes(col) ? "" : "opacity-50"
+                                }`}
+                              >
+                                {(() => {
+                                  const value = row[col];
+                                  if (value === null || value === undefined) return "-";
+                                  if (typeof value === 'object') return JSON.stringify(value).substring(0, 50);
+                                  return String(value);
+                                })()}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="bg-muted rounded-md p-4 overflow-auto max-h-[calc(100vh-400px)]">
+                    <pre className="text-sm font-mono">
+                      {JSON.stringify(visibleResults, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>No Results Available</CardTitle>
+            <CardDescription>
+              No query results found. Run a query first.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter>
+            <Button onClick={handleBackToBuilder}>Go to Query Builder</Button>
+          </CardFooter>
+        </Card>
+      )}
+    </div>
   );
 }
