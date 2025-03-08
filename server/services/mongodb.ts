@@ -51,199 +51,267 @@ export class MongoDBService {
       ]
     };
 
-    // Users collection
-    const usersCollection: MongoDBCollection = {
-      name: "users",
-      fields: [
-        { name: "_id", type: "string" },
-        { name: "name", type: "string" },
-        { name: "email", type: "string" },
-        { name: "age", type: "number" },
-      ]
-    };
-
-    // Sample user data
-    const userData = [
-      { 
-        _id: "user1", 
-        name: "John Doe", 
-        email: "john@example.com", 
-        age: 30 
-      },
-      { 
-        _id: "user2", 
-        name: "Jane Smith", 
-        email: "jane@example.com", 
-        age: 25 
-      },
-      { 
-        _id: "user3", 
-        name: "Bob Johnson", 
-        email: "bob@example.com", 
-        age: 40 
-      }
-    ];
-
-    // Sample transactions collection
+    // Transactions collection
     const transactionsCollection: MongoDBCollection = {
       name: "transactions",
       fields: [
-        { name: "_id", type: "string" },
-        { name: "userId", type: "string" },
+        { name: "_id", type: "ObjectId" },
+        { name: "orderId", type: "string" },
         { name: "amount", type: "number" },
-        { name: "date", type: "date" },
-        { name: "type", type: "string" }
+        { name: "currency", type: "string" },
+        { name: "timestamp", type: "date" },
       ]
     };
 
-    // Sample transactions data with 20 entries
-    const transactionsData = [
+    this.collections.set("customers", customersCollection);
+    this.collections.set("inventory", inventoryCollection);
+    this.collections.set("transactions", transactionsCollection);
+
+    // Sample customer data
+    const customerData = [
       {
-        _id: "t1",
-        userId: "user1",
-        amount: 75.99,
-        date: new Date("2023-05-15").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3b1",
+        email: "john@example.com",
+        name: "John Doe",
+        created: new Date("2023-01-15").toISOString()
       },
       {
-        _id: "t2",
-        userId: "user2",
-        amount: 42.50,
-        date: new Date("2023-05-16").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3b2",
+        email: "alice@example.com",
+        name: "Alice Smith",
+        created: new Date("2023-03-20").toISOString()
       },
       {
-        _id: "t3",
-        userId: "user3",
-        amount: 129.99,
-        date: new Date("2023-05-17").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3b3",
+        email: "bob@example.com",
+        name: "Bob Johnson",
+        created: new Date("2023-04-10").toISOString()
       },
       {
-        _id: "t4",
-        userId: "user1",
-        amount: 55.25,
-        date: new Date("2023-05-18").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3b4",
+        email: "charlie@example.com",
+        name: "Charlie Brown",
+        created: new Date("2023-05-05").toISOString()
       },
       {
-        _id: "t5",
-        userId: "user2",
-        amount: 19.99,
-        date: new Date("2023-05-19").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3b5",
+        email: "david@example.com",
+        name: "David Lee",
+        created: new Date("2023-06-15").toISOString()
       },
       {
-        _id: "t6",
-        userId: "user1",
-        amount: 89.75,
-        date: new Date("2023-05-20").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3b6",
+        email: "eve@example.com",
+        name: "Eve Johnson",
+        created: new Date("2023-07-20").toISOString()
       },
       {
-        _id: "t7",
-        userId: "user3",
-        amount: 199.99,
-        date: new Date("2023-05-21").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3b7",
+        email: "frank@example.com",
+        name: "Frank Miller",
+        created: new Date("2023-08-10").toISOString()
       },
       {
-        _id: "t8",
-        userId: "user2",
-        amount: 34.50,
-        date: new Date("2023-05-22").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3b8",
+        email: "grace@example.com",
+        name: "Grace Hopper",
+        created: new Date("2023-09-01").toISOString()
       },
       {
-        _id: "t9",
-        userId: "user1",
-        amount: 45.00,
-        date: new Date("2023-05-23").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3b9",
+        email: "henry@example.com",
+        name: "Henry Ford",
+        created: new Date("2023-10-15").toISOString()
       },
       {
-        _id: "t10",
-        userId: "user3",
-        amount: 145.75,
-        date: new Date("2023-05-24").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3ba",
+        email: "ivy@example.com",
+        name: "Ivy League",
+        created: new Date("2023-11-20").toISOString()
       },
       {
-        _id: "t11",
-        userId: "user2",
-        amount: 67.99,
-        date: new Date("2023-05-25").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3bb",
+        email: "jack@example.com",
+        name: "Jack Sparrow",
+        created: new Date("2023-12-05").toISOString()
       },
       {
-        _id: "t12",
-        userId: "user1",
-        amount: 22.50,
-        date: new Date("2023-05-26").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3bc",
+        email: "kate@example.com",
+        name: "Kate Winslet",
+        created: new Date("2024-01-10").toISOString()
       },
       {
-        _id: "t13",
-        userId: "user3",
-        amount: 155.00,
-        date: new Date("2023-05-27").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3bd",
+        email: "leo@example.com",
+        name: "Leo DiCaprio",
+        created: new Date("2024-02-15").toISOString()
       },
       {
-        _id: "t14",
-        userId: "user2",
-        amount: 88.75,
-        date: new Date("2023-05-28").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3be",
+        email: "mia@example.com",
+        name: "Mia Wallace",
+        created: new Date("2024-03-20").toISOString()
       },
       {
-        _id: "t15",
-        userId: "user1",
-        amount: 33.99,
-        date: new Date("2023-05-29").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3bf",
+        email: "nate@example.com",
+        name: "Nate Dogg",
+        created: new Date("2024-04-10").toISOString()
       },
       {
-        _id: "t16",
-        userId: "user3",
-        amount: 177.50,
-        date: new Date("2023-05-30").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3c0",
+        email: "olivia@example.com",
+        name: "Olivia Rodrigo",
+        created: new Date("2024-05-05").toISOString()
       },
       {
-        _id: "t17",
-        userId: "user2",
-        amount: 55.25,
-        date: new Date("2023-05-31").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3c1",
+        email: "peter@example.com",
+        name: "Peter Pan",
+        created: new Date("2024-06-15").toISOString()
       },
       {
-        _id: "t18",
-        userId: "user1",
-        amount: 44.99,
-        date: new Date("2023-06-01").toISOString(),
-        type: "purchase"
-      },
-      {
-        _id: "t19",
-        userId: "user3",
-        amount: 188.75,
-        date: new Date("2023-06-02").toISOString(),
-        type: "purchase"
-      },
-      {
-        _id: "t20",
-        userId: "user2",
-        amount: 77.50,
-        date: new Date("2023-06-03").toISOString(),
-        type: "purchase"
+        _id: "5f8d0f3e1c9d440000a1f3c2",
+        email: "quinn@example.com",
+        name: "Quinn Mallory",
+        created: new Date("2024-07-20").toISOString()
       }
     ];
 
-    this.collections.set("users", usersCollection);
-    this.collections.set("transactions", transactionsCollection);
-    this.data.set("users", userData);
-    this.data.set("transactions", transactionsData);
+    // Sample transaction data
+    const transactionData = [
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e5f",
+        orderId: "ORD-12345",
+        amount: 129.99,
+        currency: "USD",
+        timestamp: new Date("2023-05-15").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e60",
+        orderId: "ORD-12400",
+        amount: 49.95,
+        currency: "USD",
+        timestamp: new Date("2023-06-22").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e61",
+        orderId: "ORD-12398",
+        amount: 85.50,
+        currency: "USD",
+        timestamp: new Date("2023-06-20").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e62",
+        orderId: "ORD-12375",
+        amount: 199.99,
+        currency: "USD",
+        timestamp: new Date("2023-06-18").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e63",
+        orderId: "ORD-12500",
+        amount: 25.75,
+        currency: "USD",
+        timestamp: new Date("2023-07-01").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e64",
+        orderId: "ORD-12600",
+        amount: 150.00,
+        currency: "USD",
+        timestamp: new Date("2023-07-15").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e65",
+        orderId: "ORD-12700",
+        amount: 99.99,
+        currency: "USD",
+        timestamp: new Date("2023-07-29").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e66",
+        orderId: "ORD-12800",
+        amount: 39.50,
+        currency: "USD",
+        timestamp: new Date("2023-08-05").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e67",
+        orderId: "ORD-12900",
+        amount: 75.25,
+        currency: "USD",
+        timestamp: new Date("2023-08-12").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e68",
+        orderId: "ORD-13000",
+        amount: 110.00,
+        currency: "USD",
+        timestamp: new Date("2023-08-20").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e69",
+        orderId: "ORD-13100",
+        amount: 64.99,
+        currency: "USD",
+        timestamp: new Date("2023-08-28").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e6a",
+        orderId: "ORD-13200",
+        amount: 200.00,
+        currency: "USD",
+        timestamp: new Date("2023-09-05").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e6b",
+        orderId: "ORD-13300",
+        amount: 12.50,
+        currency: "USD",
+        timestamp: new Date("2023-09-12").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e6c",
+        orderId: "ORD-13400",
+        amount: 80.75,
+        currency: "USD",
+        timestamp: new Date("2023-09-20").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e6d",
+        orderId: "ORD-13500",
+        amount: 175.50,
+        currency: "USD",
+        timestamp: new Date("2023-09-27").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e6e",
+        orderId: "ORD-13600",
+        amount: 45.00,
+        currency: "USD",
+        timestamp: new Date("2023-10-04").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e6f",
+        orderId: "ORD-13700",
+        amount: 105.25,
+        currency: "USD",
+        timestamp: new Date("2023-10-11").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e70",
+        orderId: "ORD-13800",
+        amount: 160.00,
+        currency: "USD",
+        timestamp: new Date("2023-10-18").toISOString()
+      }
+
+    ];
+
+    this.data.set("customers", customerData);
+    this.data.set("transactions", transactionData);
   }
 
   async connect(dataSource: DataSource): Promise<boolean> {
