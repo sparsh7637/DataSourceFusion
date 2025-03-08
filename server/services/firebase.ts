@@ -79,7 +79,7 @@ export class FirebaseService {
     this.collections.set("orders", ordersCollection);
     this.collections.set("products", productsCollection);
 
-    // Sample user data
+    // Sample user data with 20 entries
     const userData = [
       {
         uid: "user1",
@@ -95,13 +95,115 @@ export class FirebaseService {
       },
       {
         uid: "user3",
-        email: "bob@exam.com",
+        email: "bob@example.com",
         displayName: "Bob Johnson",
         createdAt: new Date("2023-04-10").toISOString()
+      },
+      {
+        uid: "user4",
+        email: "sarah@example.com",
+        displayName: "Sarah Williams",
+        createdAt: new Date("2023-05-05").toISOString()
+      },
+      {
+        uid: "user5",
+        email: "michael@example.com",
+        displayName: "Michael Brown",
+        createdAt: new Date("2023-01-25").toISOString()
+      },
+      {
+        uid: "user6",
+        email: "emma@example.com",
+        displayName: "Emma Davis",
+        createdAt: new Date("2023-02-18").toISOString()
+      },
+      {
+        uid: "user7",
+        email: "david@example.com",
+        displayName: "David Wilson",
+        createdAt: new Date("2023-03-12").toISOString()
+      },
+      {
+        uid: "user8",
+        email: "olivia@example.com",
+        displayName: "Olivia Miller",
+        createdAt: new Date("2023-04-22").toISOString()
+      },
+      {
+        uid: "user9",
+        email: "james@example.com",
+        displayName: "James Taylor",
+        createdAt: new Date("2023-05-17").toISOString()
+      },
+      {
+        uid: "user10",
+        email: "sophia@example.com",
+        displayName: "Sophia Anderson",
+        createdAt: new Date("2023-06-03").toISOString()
+      },
+      {
+        uid: "user11",
+        email: "liam@example.com",
+        displayName: "Liam Thomas",
+        createdAt: new Date("2023-01-08").toISOString()
+      },
+      {
+        uid: "user12",
+        email: "ava@example.com",
+        displayName: "Ava Jackson",
+        createdAt: new Date("2023-02-27").toISOString()
+      },
+      {
+        uid: "user13",
+        email: "noah@example.com",
+        displayName: "Noah White",
+        createdAt: new Date("2023-03-30").toISOString()
+      },
+      {
+        uid: "user14",
+        email: "isabella@example.com",
+        displayName: "Isabella Harris",
+        createdAt: new Date("2023-04-14").toISOString()
+      },
+      {
+        uid: "user15",
+        email: "william@example.com",
+        displayName: "William Martin",
+        createdAt: new Date("2023-05-29").toISOString()
+      },
+      {
+        uid: "user16",
+        email: "mia@example.com",
+        displayName: "Mia Thompson",
+        createdAt: new Date("2023-06-09").toISOString()
+      },
+      {
+        uid: "user17",
+        email: "benjamin@example.com",
+        displayName: "Benjamin Garcia",
+        createdAt: new Date("2023-01-19").toISOString()
+      },
+      {
+        uid: "user18",
+        email: "charlotte@example.com",
+        displayName: "Charlotte Martinez",
+        createdAt: new Date("2023-02-11").toISOString()
+      },
+      {
+        uid: "user19",
+        email: "mason@example.com",
+        displayName: "Mason Robinson",
+        createdAt: new Date("2023-03-25").toISOString()
+      },
+      {
+        uid: "user20",
+        email: "amelia@example.com",
+        displayName: "Amelia Clark",
+        createdAt: new Date("2023-04-30").toISOString()
       }
     ];
 
-    // Sample order data
+    // Sample order data with 20 entries
     const orderData = [
       {
         orderId: "ORD-12345",
@@ -125,6 +227,102 @@ export class FirebaseService {
         orderId: "ORD-12375",
         userId: "user3",
         orderDate: new Date("2023-06-18").toISOString(),
+        status: "completed"
+      },
+      {
+        orderId: "ORD-12410",
+        userId: "user4",
+        orderDate: new Date("2023-06-25").toISOString(),
+        status: "pending"
+      },
+      {
+        orderId: "ORD-12415",
+        userId: "user5",
+        orderDate: new Date("2023-06-27").toISOString(),
+        status: "shipped"
+      },
+      {
+        orderId: "ORD-12420",
+        userId: "user6",
+        orderDate: new Date("2023-06-28").toISOString(),
+        status: "completed"
+      },
+      {
+        orderId: "ORD-12425",
+        userId: "user7",
+        orderDate: new Date("2023-06-29").toISOString(),
+        status: "processing"
+      },
+      {
+        orderId: "ORD-12430",
+        userId: "user8",
+        orderDate: new Date("2023-06-30").toISOString(),
+        status: "completed"
+      },
+      {
+        orderId: "ORD-12435",
+        userId: "user9",
+        orderDate: new Date("2023-07-01").toISOString(),
+        status: "pending"
+      },
+      {
+        orderId: "ORD-12440",
+        userId: "user10",
+        orderDate: new Date("2023-07-02").toISOString(),
+        status: "shipped"
+      },
+      {
+        orderId: "ORD-12445",
+        userId: "user11",
+        orderDate: new Date("2023-07-03").toISOString(),
+        status: "completed"
+      },
+      {
+        orderId: "ORD-12450",
+        userId: "user12",
+        orderDate: new Date("2023-07-04").toISOString(),
+        status: "processing"
+      },
+      {
+        orderId: "ORD-12455",
+        userId: "user13",
+        orderDate: new Date("2023-07-05").toISOString(),
+        status: "completed"
+      },
+      {
+        orderId: "ORD-12460",
+        userId: "user14",
+        orderDate: new Date("2023-07-06").toISOString(),
+        status: "pending"
+      },
+      {
+        orderId: "ORD-12465",
+        userId: "user15",
+        orderDate: new Date("2023-07-07").toISOString(),
+        status: "shipped"
+      },
+      {
+        orderId: "ORD-12470",
+        userId: "user16",
+        orderDate: new Date("2023-07-08").toISOString(),
+        status: "completed"
+      },
+      {
+        orderId: "ORD-12475",
+        userId: "user17",
+        orderDate: new Date("2023-07-09").toISOString(),
+        status: "processing"
+      },
+      {
+        orderId: "ORD-12480",
+        userId: "user18",
+        orderDate: new Date("2023-07-10").toISOString(),
+        status: "completed"
+      },
+      {
+        orderId: "ORD-12485",
+        userId: "user19",
+        orderDate: new Date("2023-07-11").toISOString(),
         status: "completed"
       }
     ];

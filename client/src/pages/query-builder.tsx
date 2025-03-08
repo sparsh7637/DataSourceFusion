@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -142,34 +142,32 @@ export default function QueryBuilder() {
     }
   };
 
-  // Handle execute query
-  const handleExecuteQuery = () => {
-    if (!currentQuery.query) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter a query to execute",
-        variant: "destructive",
-      });
-      return;
-    }
+  const handleFetchData = async (dataSource: string, collection: string) => {
+    // Build a simple SELECT * query for the given collection, limiting to 20 entries
+    const simpleQuery = `SELECT * FROM ${collection} LIMIT 20`;
 
-    setQueryError(null);
-    
-    // If we have a saved query, use its ID
-    if (selectedQueryId) {
-      executeQueryMutation.mutate({ 
-        queryId: selectedQueryId,
-        params: currentQuery.params
-      });
-    } else {
-      // For unsaved queries, send the full query object
-      executeQueryMutation.mutate({
-        query: currentQuery.query,
-        dataSources: currentQuery.dataSources,
-        federationStrategy: currentQuery.federationStrategy,
-        params: currentQuery.params
-      });
-    }
+    // Execute the query
+    await executeQueryMutation.mutateAsync({
+      query: simpleQuery,
+      params: {},
+      dataSources: [dataSource],
+      collections: [collection],
+      federationStrategy: "virtual"
+    });
+  };
+
+  // Handle execute query -  This remains largely unchanged, but could be adapted if needed.
+  const handleExecuteQuery = async () => {
+    if (!currentQuery) return;
+
+    // Execute the query
+    await executeQueryMutation.mutateAsync({
+      query: currentQuery.query,
+      params: currentQuery.params,
+      dataSources: currentQuery.dataSources,
+      collections: currentQuery.collections,
+      federationStrategy: currentQuery.federationStrategy
+    });
   };
 
   // Handle view results
@@ -179,6 +177,17 @@ export default function QueryBuilder() {
       localStorage.setItem('queryResults', JSON.stringify(queryExecutionResults));
       navigate('/results');
     }
+  };
+
+  // Add a button to fetch data.  This assumes a mechanism exists to select a datasource and collection.
+  //  This section needs significant expansion to handle selecting data sources and collections in a user-friendly way
+  const handleFetchDataClick = async () => {
+    //  Placeholder: Replace with actual datasource and collection selection logic
+    const dataSourceId = dataSources[0].id; // Select the first datasource (needs improvement)
+    const collectionName = "users"; // Placeholder: Needs user input or selection mechanism
+
+
+    await handleFetchData(dataSourceId, collectionName);
   };
 
   return (
@@ -191,8 +200,8 @@ export default function QueryBuilder() {
           </p>
         </div>
         <div className="flex space-x-2">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => {
               setCurrentQuery({
                 name: "",
@@ -218,6 +227,7 @@ export default function QueryBuilder() {
               Edit Query
             </Button>
           )}
+          <Button onClick={handleFetchDataClick}>Fetch Data</Button> {/* Added Fetch Data button */}
         </div>
       </div>
 
@@ -254,14 +264,14 @@ export default function QueryBuilder() {
                   />
                 </CardContent>
                 <CardFooter className="flex justify-between pt-4 border-t">
-                  <Button 
-                    variant="secondary" 
+                  <Button
+                    variant="secondary"
                     onClick={handleSaveQuery}
                     disabled={createQueryMutation.isPending || updateQueryMutation.isPending}
                   >
                     {createQueryMutation.isPending || updateQueryMutation.isPending ? "Saving..." : "Save Query"}
                   </Button>
-                  <Button 
+                  <Button
                     onClick={handleExecuteQuery}
                     disabled={executeQueryMutation.isPending}
                   >
@@ -282,7 +292,7 @@ export default function QueryBuilder() {
                     <div className="rounded-md bg-secondary/50 p-4">
                       <pre className="text-sm font-mono whitespace-pre-wrap">{currentQuery.query}</pre>
                     </div>
-                    
+
                     <div className="flex flex-wrap gap-2">
                       <div className="text-sm font-medium mr-2">Data Sources:</div>
                       {currentQuery.dataSources.map((sourceId: number) => {
@@ -294,7 +304,7 @@ export default function QueryBuilder() {
                         ) : null;
                       })}
                     </div>
-                    
+
                     {currentQuery.collections && currentQuery.collections.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         <div className="text-sm font-medium mr-2">Collections:</div>
@@ -305,44 +315,26 @@ export default function QueryBuilder() {
                         ))}
                       </div>
                     )}
-                    
-                    {currentQuery.params && Object.keys(currentQuery.params).length > 0 && (
-                      <Accordion type="single" collapsible className="w-full">
-                        <AccordionItem value="parameters">
-                          <AccordionTrigger className="text-sm font-medium">
-                            Parameters
-                          </AccordionTrigger>
-                          <AccordionContent>
-                            <div className="grid grid-cols-2 gap-2">
-                              {Object.entries(currentQuery.params).map(([key, value]: [string, any]) => (
-                                <div key={key} className="flex justify-between p-2 bg-muted rounded-md">
-                                  <span className="font-mono text-xs">{key}</span>
-                                  <span className="font-mono text-xs">{JSON.stringify(value)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </AccordionContent>
-                        </AccordionItem>
-                      </Accordion>
-                    )}
+
+                    {/* Removed Accordion for Parameters */}
                   </div>
                 </CardContent>
                 <CardFooter className="flex justify-between pt-4 border-t">
-                  <Button 
+                  <Button
                     variant="secondary"
                     onClick={() => setIsEditing(true)}
                   >
                     Edit Query
                   </Button>
                   <div className="flex space-x-2">
-                    <Button 
+                    <Button
                       onClick={handleExecuteQuery}
                       disabled={executeQueryMutation.isPending}
                     >
                       {executeQueryMutation.isPending ? "Executing..." : "Execute Query"}
                     </Button>
                     {queryExecutionResults && (
-                      <Button 
+                      <Button
                         variant="outline"
                         onClick={handleViewResults}
                       >
@@ -389,7 +381,7 @@ export default function QueryBuilder() {
                         </div>
                       )}
                     </div>
-                    
+
                     <Tabs defaultValue="preview">
                       <TabsList>
                         <TabsTrigger value="preview">Preview</TabsTrigger>
@@ -409,11 +401,11 @@ export default function QueryBuilder() {
                               </tr>
                             </thead>
                             <tbody>
-                              {queryExecutionResults.results.slice(0, 5).map((row: any, i: number) => (
+                              {queryExecutionResults.results.slice(0, 20).map((row: any, i: number) => ( // Increased limit to 20
                                 <tr key={i} className="border-t">
                                   {Object.values(row).map((value: any, j: number) => (
                                     <td key={j} className="px-4 py-2">
-                                      {typeof value === 'object' 
+                                      {typeof value === 'object'
                                         ? JSON.stringify(value).substring(0, 50) + (JSON.stringify(value).length > 50 ? '...' : '')
                                         : String(value).substring(0, 50) + (String(value).length > 50 ? '...' : '')
                                       }
@@ -423,11 +415,11 @@ export default function QueryBuilder() {
                               ))}
                             </tbody>
                           </table>
-                          {queryExecutionResults.results.length > 5 && (
+                          {queryExecutionResults.results.length > 20 && ( // Increased limit to 20
                             <div className="p-2 text-center text-sm text-muted-foreground">
-                              Showing 5 of {queryExecutionResults.results.length} results. 
-                              <Button 
-                                variant="link" 
+                              Showing 20 of {queryExecutionResults.results.length} results.
+                              <Button
+                                variant="link"
                                 onClick={handleViewResults}
                                 className="ml-1"
                               >
@@ -443,8 +435,8 @@ export default function QueryBuilder() {
                             {JSON.stringify(queryExecutionResults.results, null, 2)}
                           </pre>
                           <div className="absolute top-2 right-2">
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="ghost"
                               onClick={() => {
                                 navigator.clipboard.writeText(JSON.stringify(queryExecutionResults.results, null, 2));
@@ -463,13 +455,23 @@ export default function QueryBuilder() {
                   </div>
                 </CardContent>
                 <CardFooter className="justify-end pt-4 border-t">
-                  <Button 
+                  <Button
                     onClick={handleViewResults}
                   >
                     View Full Results
                   </Button>
                 </CardFooter>
               </Card>
+            )}
+
+            {queryError && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Query Execution Error</AlertTitle>
+                <AlertDescription>
+                  {queryError}
+                </AlertDescription>
+              </Alert>
             )}
           </>
         )}

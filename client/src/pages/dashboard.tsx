@@ -297,7 +297,7 @@ export default function Dashboard() {
               </a>
             </div>
           ) : (
-            queries.slice(0, 3).map((query: Query) => (
+            queries.slice(0, 20).map((query: Query) => (
               <Card key={query.id} className="p-4 border border-gray-200">
                 <div className="flex justify-between items-center">
                   <div>

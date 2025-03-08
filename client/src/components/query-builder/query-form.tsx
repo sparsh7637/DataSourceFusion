@@ -485,12 +485,18 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
                           )}
                           <Button 
                             type="button"
-                            variant="outline"
+                            variant="primary"
                             size="sm"
-                            onClick={addParameter}
-                            className="mt-2"
+                            onClick={() => {
+                              // This button will fetch data directly without parameters
+                              const fetchDataEvent = new CustomEvent('fetchData', {
+                                detail: { collectionName: form.getValues('collections')[0] }
+                              });
+                              window.dispatchEvent(fetchDataEvent);
+                            }}
+                            className="mt-2 bg-blue-600 text-white hover:bg-blue-700"
                           >
-                            Add Parameter
+                            Fetch Data
                           </Button>
                         </div>
                       </div>

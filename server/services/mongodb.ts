@@ -86,6 +86,96 @@ export class MongoDBService {
         email: "bob@example.com",
         name: "Bob Johnson",
         created: new Date("2023-04-10").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3b4",
+        email: "charlie@example.com",
+        name: "Charlie Brown",
+        created: new Date("2023-05-05").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3b5",
+        email: "david@example.com",
+        name: "David Lee",
+        created: new Date("2023-06-15").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3b6",
+        email: "eve@example.com",
+        name: "Eve Johnson",
+        created: new Date("2023-07-20").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3b7",
+        email: "frank@example.com",
+        name: "Frank Miller",
+        created: new Date("2023-08-10").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3b8",
+        email: "grace@example.com",
+        name: "Grace Hopper",
+        created: new Date("2023-09-01").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3b9",
+        email: "henry@example.com",
+        name: "Henry Ford",
+        created: new Date("2023-10-15").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3ba",
+        email: "ivy@example.com",
+        name: "Ivy League",
+        created: new Date("2023-11-20").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3bb",
+        email: "jack@example.com",
+        name: "Jack Sparrow",
+        created: new Date("2023-12-05").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3bc",
+        email: "kate@example.com",
+        name: "Kate Winslet",
+        created: new Date("2024-01-10").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3bd",
+        email: "leo@example.com",
+        name: "Leo DiCaprio",
+        created: new Date("2024-02-15").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3be",
+        email: "mia@example.com",
+        name: "Mia Wallace",
+        created: new Date("2024-03-20").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3bf",
+        email: "nate@example.com",
+        name: "Nate Dogg",
+        created: new Date("2024-04-10").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3c0",
+        email: "olivia@example.com",
+        name: "Olivia Rodrigo",
+        created: new Date("2024-05-05").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3c1",
+        email: "peter@example.com",
+        name: "Peter Pan",
+        created: new Date("2024-06-15").toISOString()
+      },
+      {
+        _id: "5f8d0f3e1c9d440000a1f3c2",
+        email: "quinn@example.com",
+        name: "Quinn Mallory",
+        created: new Date("2024-07-20").toISOString()
       }
     ];
 
@@ -118,7 +208,106 @@ export class MongoDBService {
         amount: 199.99,
         currency: "USD",
         timestamp: new Date("2023-06-18").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e63",
+        orderId: "ORD-12500",
+        amount: 25.75,
+        currency: "USD",
+        timestamp: new Date("2023-07-01").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e64",
+        orderId: "ORD-12600",
+        amount: 150.00,
+        currency: "USD",
+        timestamp: new Date("2023-07-15").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e65",
+        orderId: "ORD-12700",
+        amount: 99.99,
+        currency: "USD",
+        timestamp: new Date("2023-07-29").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e66",
+        orderId: "ORD-12800",
+        amount: 39.50,
+        currency: "USD",
+        timestamp: new Date("2023-08-05").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e67",
+        orderId: "ORD-12900",
+        amount: 75.25,
+        currency: "USD",
+        timestamp: new Date("2023-08-12").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e68",
+        orderId: "ORD-13000",
+        amount: 110.00,
+        currency: "USD",
+        timestamp: new Date("2023-08-20").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e69",
+        orderId: "ORD-13100",
+        amount: 64.99,
+        currency: "USD",
+        timestamp: new Date("2023-08-28").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e6a",
+        orderId: "ORD-13200",
+        amount: 200.00,
+        currency: "USD",
+        timestamp: new Date("2023-09-05").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e6b",
+        orderId: "ORD-13300",
+        amount: 12.50,
+        currency: "USD",
+        timestamp: new Date("2023-09-12").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e6c",
+        orderId: "ORD-13400",
+        amount: 80.75,
+        currency: "USD",
+        timestamp: new Date("2023-09-20").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e6d",
+        orderId: "ORD-13500",
+        amount: 175.50,
+        currency: "USD",
+        timestamp: new Date("2023-09-27").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e6e",
+        orderId: "ORD-13600",
+        amount: 45.00,
+        currency: "USD",
+        timestamp: new Date("2023-10-04").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e6f",
+        orderId: "ORD-13700",
+        amount: 105.25,
+        currency: "USD",
+        timestamp: new Date("2023-10-11").toISOString()
+      },
+      {
+        _id: "6a1b2c3d4e5f6a1b2c3d4e70",
+        orderId: "ORD-13800",
+        amount: 160.00,
+        currency: "USD",
+        timestamp: new Date("2023-10-18").toISOString()
       }
+
     ];
 
     this.data.set("customers", customerData);
@@ -323,9 +512,11 @@ export class MongoDBService {
             }
           }
 
-          // Handle limit
+          // Apply limit
           if (query.limit && typeof query.limit === 'number') {
             options.limit = query.limit;
+          } else {
+            options.limit = 20; // Default limit increased to 20
           }
 
           // Handle projection
