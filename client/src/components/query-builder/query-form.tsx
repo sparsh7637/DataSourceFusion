@@ -62,7 +62,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
 
   // Watch for changes to update the parent component
   const formValues = form.watch();
-  
+
   useEffect(() => {
     // Convert parameters to params object
     const params: {[key: string]: any} = {};
@@ -77,7 +77,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
         }
       }
     });
-    
+
     onChange({ ...formValues, params });
   }, [formValues, queryParameters, onChange]);
 
@@ -86,25 +86,25 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
     const fetchCollections = async () => {
       const collections: {[key: string]: string[]} = {};
       const schemas: {[key: number]: any} = {};
-      
+
       for (const sourceId of selectedDataSources) {
         try {
           const source = dataSources.find(ds => ds.id === sourceId);
           if (!source) continue;
-          
+
           // Fetch collections from the API
           const response = await apiRequest('GET', `/api/data-sources/${sourceId}/collections`);
           const collectionNames = await response.json();
-          
+
           if (Array.isArray(collectionNames) && collectionNames.length > 0) {
             collections[source.name] = collectionNames;
-            
+
             // Fetch schema for each collection
             for (const collName of collectionNames) {
               try {
                 const schemaResp = await apiRequest('GET', `/api/data-sources/${sourceId}/collections/${collName}/schema`);
                 const schema = await schemaResp.json();
-                
+
                 if (!schemas[sourceId]) schemas[sourceId] = {};
                 schemas[sourceId][collName] = schema;
               } catch (err) {
@@ -121,20 +121,20 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
           }
         }
       }
-      
+
       setAvailableCollections(collections);
       setSourceSchemas(schemas);
-      
+
       // Remove selected collections that are no longer available
       const flatAvailableCollections = Object.values(collections).flat();
       const validSelectedCollections = selectedCollections.filter(
         (collection) => flatAvailableCollections.includes(collection)
       );
-      
+
       setSelectedCollections(validSelectedCollections);
       form.setValue("collections", validSelectedCollections);
     };
-    
+
     if (selectedDataSources.length > 0) {
       fetchCollections();
     } else {
@@ -146,13 +146,13 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
   // Handle data source selection
   const handleDataSourceChange = (sourceId: number, checked: boolean) => {
     let newSelectedSources;
-    
+
     if (checked) {
       newSelectedSources = [...selectedDataSources, sourceId];
     } else {
       newSelectedSources = selectedDataSources.filter((id) => id !== sourceId);
     }
-    
+
     setSelectedDataSources(newSelectedSources);
     form.setValue("dataSources", newSelectedSources);
   };
@@ -160,29 +160,29 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
   // Handle collection selection
   const handleCollectionChange = (collection: string, checked: boolean) => {
     let newSelectedCollections;
-    
+
     if (checked) {
       newSelectedCollections = [...selectedCollections, collection];
     } else {
       newSelectedCollections = selectedCollections.filter((c) => c !== collection);
     }
-    
+
     setSelectedCollections(newSelectedCollections);
     form.setValue("collections", newSelectedCollections);
-    
+
     // Auto-generate a simple query when collections are selected
     if (newSelectedCollections.length > 0 && form.getValues("query") === "") {
       const collection = newSelectedCollections[0];
       generateSampleQuery(collection);
     }
   };
-  
+
   // Generate a simple sample query based on selected collection
   const generateSampleQuery = (collectionName: string) => {
     // Find which data source this collection belongs to
     let dataSourceId: number | null = null;
     let fields: string[] = ["*"];
-    
+
     // Look through available collections to find the source
     for (const [sourceName, collections] of Object.entries(availableCollections)) {
       if (collections.includes(collectionName)) {
@@ -194,7 +194,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
         break;
       }
     }
-    
+
     // If we have schema information, use specific fields
     if (dataSourceId && sourceSchemas[dataSourceId] && sourceSchemas[dataSourceId][collectionName]) {
       const schema = sourceSchemas[dataSourceId][collectionName];
@@ -202,7 +202,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
         fields = schema.fields.slice(0, 5).map((f: any) => f.name);
       }
     }
-    
+
     // Create a simple SELECT query
     const sampleQuery = `SELECT ${fields.join(', ')} FROM ${collectionName} LIMIT 10`;
     form.setValue("query", sampleQuery);
@@ -225,12 +225,12 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
       setQueryParameters([]);
       return;
     }
-    
+
     const query = savedQueries.find(q => q.id === parseInt(queryId));
     if (!query) return;
-    
+
     setSelectedSavedQuery(queryId);
-    
+
     // Update form values from saved query
     form.reset({
       name: query.name,
@@ -240,25 +240,25 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
       federationStrategy: query.federationStrategy,
       params: {},
     });
-    
+
     // Update selected data sources and collections
     setSelectedDataSources(Array.isArray(query.dataSources) ? query.dataSources : []);
     setSelectedCollections(Array.isArray(query.collections) ? query.collections : []);
-    
+
     // Extract parameters from the query
     extractQueryParameters(query.query);
-    
+
     toast({
       title: "Query Loaded",
       description: `Loaded query: ${query.name}`,
     });
   };
-  
+
   // Extract parameters from the query (look for :paramName patterns)
   const extractQueryParameters = (query: string) => {
     const paramRegex = /:([a-zA-Z0-9_]+)/g;
     const matches = query.match(paramRegex);
-    
+
     if (matches) {
       const uniqueParams = [...new Set(matches)];
       const newParams = uniqueParams.map(param => ({
@@ -270,33 +270,33 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
       setQueryParameters([]);
     }
   };
-  
+
   // Update parameter value
   const updateParameterValue = (index: number, value: string) => {
     const newParams = [...queryParameters];
     newParams[index].value = value;
     setQueryParameters(newParams);
   };
-  
+
   // Add a new parameter
   const addParameter = () => {
     setQueryParameters([...queryParameters, { name: '', value: '' }]);
   };
-  
+
   // Remove a parameter
   const removeParameter = (index: number) => {
     const newParams = [...queryParameters];
     newParams.splice(index, 1);
     setQueryParameters(newParams);
   };
-  
+
   // Update parameter name
   const updateParameterName = (index: number, name: string) => {
     const newParams = [...queryParameters];
     newParams[index].name = name;
     setQueryParameters(newParams);
   };
-  
+
   // When query changes, extract parameters
   useEffect(() => {
     const query = form.getValues("query");
@@ -320,7 +320,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
                     <FormControl>
                       <Input placeholder="User Purchase History" {...field} />
                     </FormControl>
-                    
+
                     <Select value={selectedSavedQuery || ""} onValueChange={handleLoadSavedQuery}>
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="Load Query" />
@@ -339,7 +339,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
                 </FormItem>
               )}
             />
-            
+
             <div>
               <FormLabel>Data Sources</FormLabel>
               <div className="flex flex-wrap gap-2 mt-2">
@@ -365,7 +365,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
                 </p>
               )}
             </div>
-            
+
             <div>
               <FormLabel>Collections/Tables</FormLabel>
               <div className="grid grid-cols-2 gap-2 mt-2">
@@ -413,7 +413,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
               )}
             </div>
           </div>
-          
+
           <div>
             <FormField
               control={form.control}
@@ -426,7 +426,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
                       <TabsTrigger value="builder">SQL Query</TabsTrigger>
                       <TabsTrigger value="params">Parameters</TabsTrigger>
                     </TabsList>
-                    
+
                     <TabsContent value="builder">
                       <div className="border border-gray-300 rounded-md overflow-hidden">
                         <div className="bg-gray-50 px-3 py-2 border-b border-gray-300 flex space-x-2">
@@ -445,7 +445,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
                         </FormControl>
                       </div>
                     </TabsContent>
-                    
+
                     <TabsContent value="params">
                       <div className="border border-gray-300 rounded-md p-3">
                         <div className="space-y-2">
@@ -508,7 +508,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
             />
           </div>
         </div>
-        
+
         <FormField
           control={form.control}
           name="federationStrategy"
