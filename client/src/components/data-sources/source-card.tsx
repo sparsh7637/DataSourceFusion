@@ -21,11 +21,36 @@ export default function SourceCard({ dataSource, onEdit }: SourceCardProps) {
   const collections = Array.isArray(dataSource.collections) 
     ? dataSource.collections 
     : [];
+    
+  // Determine connection status
+  const isConnected = dataSource.status === 'connected';
+  const isSampleMode = isConnected && collections.length === 0;
+  
+  // Determine status display
+  let statusColor = 'bg-green-500';
+  let statusText = 'Connected';
+  let statusTextColor = 'text-green-600';
+  
+  if (isSampleMode) {
+    statusColor = 'bg-amber-400';
+    statusText = 'Sample Mode';
+    statusTextColor = 'text-amber-600';
+  } else if (!isConnected) {
+    statusColor = 'bg-red-500';
+    statusText = 'Disconnected';
+    statusTextColor = 'text-red-600';
+  }
 
-  // Determine gradient based on source type
-  const gradientClass = dataSource.type === 'firebase' 
+  // Determine gradient based on source type and connection status
+  let gradientClass = dataSource.type === 'firebase' 
     ? 'bg-gradient-to-r from-red-50 to-orange-50' 
     : 'bg-gradient-to-r from-green-50 to-emerald-50';
+    
+  if (isSampleMode) {
+    gradientClass = dataSource.type === 'firebase'
+      ? 'bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200'
+      : 'bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200';
+  }
 
   const handleDelete = async () => {
     if (confirm("Are you sure you want to delete this data source?")) {
@@ -66,8 +91,8 @@ export default function SourceCard({ dataSource, onEdit }: SourceCardProps) {
             <div className="ml-3">
               <h4 className="text-lg font-semibold text-gray-800">{dataSource.name}</h4>
               <div className="flex items-center">
-                <span className="inline-block h-2 w-2 rounded-full bg-green-500 mr-1"></span>
-                <span className="text-sm text-green-600">{dataSource.status === 'connected' ? 'Connected' : dataSource.status}</span>
+                <span className={`inline-block h-2 w-2 rounded-full ${statusColor} mr-1`}></span>
+                <span className={`text-sm ${statusTextColor}`}>{statusText}</span>
               </div>
             </div>
           </div>
@@ -94,15 +119,31 @@ export default function SourceCard({ dataSource, onEdit }: SourceCardProps) {
         <div className="mb-3">
           <h5 className="text-sm font-medium text-gray-600 mb-1">Collections</h5>
           <div className="flex flex-wrap gap-2">
-            {collections.map((collection, index) => (
-              <Badge
-                key={index}
-                variant="secondary"
-                className="px-2 py-1 bg-gray-100 rounded text-xs text-gray-800"
-              >
-                {collection}
-              </Badge>
-            ))}
+            {collections.length > 0 ? (
+              collections.map((collection, index) => (
+                <Badge
+                  key={index}
+                  variant="secondary"
+                  className="px-2 py-1 bg-gray-100 rounded text-xs text-gray-800"
+                >
+                  {collection}
+                </Badge>
+              ))
+            ) : (
+              <div className="w-full">
+                {isSampleMode ? (
+                  <div className="p-2 bg-amber-50 rounded border border-amber-200 text-amber-800 text-xs">
+                    <div className="font-medium mb-1">Using Sample Data Collections</div>
+                    <p>This data source is using pre-defined sample collections.</p>
+                    <p className="mt-1">To use real collections, please update source configuration.</p>
+                  </div>
+                ) : (
+                  <div className="p-2 bg-gray-50 rounded border border-gray-200 text-gray-500 text-xs">
+                    No collections available
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div>
@@ -112,6 +153,21 @@ export default function SourceCard({ dataSource, onEdit }: SourceCardProps) {
               ? `projectId: "${dataSource.config?.projectId || 'N/A'}"` 
               : `uri: "${dataSource.config?.uri ? dataSource.config.uri.replace(/:[^\/]+@/, ':****@') : 'N/A'}"`}
           </div>
+          
+          {isSampleMode && (
+            <div className="mt-2 flex items-start space-x-2">
+              <div className="text-amber-500 flex-shrink-0 mt-0.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+              </div>
+              <p className="text-xs text-amber-700">
+                Using demonstration data. Click edit to update credentials and connect to your {dataSource.type === 'firebase' ? 'Firebase' : 'MongoDB'} instance.
+              </p>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
