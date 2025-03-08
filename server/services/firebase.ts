@@ -13,6 +13,7 @@ import {
   orderBy,
   WhereFilterOp
 } from 'firebase/firestore';
+import { fileStorage } from "./file-storage";
 
 interface FirebaseCollection {
   name: string;
@@ -343,10 +344,31 @@ export class FirebaseService {
         const snapshot = await getDocs(queryRef);
         
         // Convert to array of documents with IDs
-        return snapshot.docs.map(doc => ({
+        const results = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
+        
+        // Apply projection (selected columns) if provided
+        let finalResults = results;
+        if (queryParams && queryParams.columns && Array.isArray(queryParams.columns) && queryParams.columns.length > 0) {
+          finalResults = results.map(item => {
+            const projectedItem: any = {};
+            for (const column of queryParams.columns) {
+              if (item[column] !== undefined) {
+                projectedItem[column] = item[column];
+              }
+            }
+            return projectedItem;
+          });
+        }
+        
+        // Store results in temp file
+        const timestamp = Date.now();
+        const fileName = `firebase_${collectionName}_${timestamp}`;
+        await fileStorage.storeData(fileName, finalResults);
+        
+        return finalResults;
       } catch (error) {
         console.error(`Error executing query on collection ${collectionName}:`, error);
         throw error;
@@ -400,9 +422,134 @@ export class FirebaseService {
         if (queryParams.limit && typeof queryParams.limit === 'number') {
           result = result.slice(0, queryParams.limit);
         }
+        
+        // Apply projection (selected columns) if provided
+        if (queryParams.columns && Array.isArray(queryParams.columns) && queryParams.columns.length > 0) {
+          result = result.map(item => {
+            const projectedItem: any = {};
+            for (const column of queryParams.columns) {
+              if (item[column] !== undefined) {
+                projectedItem[column] = item[column];
+              }
+            }
+            return projectedItem;
+          });
+        }
+        
+        // Store results in temp file
+        const timestamp = Date.now();
+        const fileName = `firebase_${collectionName}_${timestamp}`;
+        await fileStorage.storeData(fileName, result);
       }
       
       return result;
+    }
+    
+    return [];
+  }
+  
+  async fetchAllData(collectionName: string): Promise<FirebaseDocument[]> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to Firebase");
+    }
+    
+    // Check if we have a real connection
+    if (this.firestore && this.cachedCollections.includes(collectionName)) {
+      try {
+        const collRef = collection(this.firestore, collectionName);
+        const snapshot = await getDocs(query(collRef));
+        
+        // Convert to array of documents with IDs
+        const results = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        
+        // Store in temp file
+        const timestamp = Date.now();
+        const fileName = `firebase_${collectionName}_full_${timestamp}`;
+        await fileStorage.storeData(fileName, results);
+        
+        return results;
+      } catch (error) {
+        console.error(`Error fetching all data from collection ${collectionName}:`, error);
+        throw error;
+      }
+    }
+    
+    // Fall back to sample data
+    if (this.data.has(collectionName)) {
+      const results = this.data.get(collectionName) || [];
+      
+      // Store in temp file
+      const timestamp = Date.now();
+      const fileName = `firebase_${collectionName}_full_${timestamp}`;
+      await fileStorage.storeData(fileName, results);
+      
+      return [...results];
+    }
+    
+    return [];
+  }
+  
+  async fetchDataWithProjection(collectionName: string, columns: string[]): Promise<FirebaseDocument[]> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to Firebase");
+    }
+    
+    // Check if we have a real connection
+    if (this.firestore && this.cachedCollections.includes(collectionName)) {
+      try {
+        const collRef = collection(this.firestore, collectionName);
+        const snapshot = await getDocs(query(collRef));
+        
+        // Convert to array of documents with IDs and apply projection
+        const results = snapshot.docs.map(doc => {
+          const data = doc.data();
+          const projectedItem: any = { id: doc.id };
+          
+          for (const column of columns) {
+            if (data[column] !== undefined) {
+              projectedItem[column] = data[column];
+            }
+          }
+          
+          return projectedItem;
+        });
+        
+        // Store in temp file
+        const timestamp = Date.now();
+        const fileName = `firebase_${collectionName}_projection_${timestamp}`;
+        await fileStorage.storeData(fileName, results);
+        
+        return results;
+      } catch (error) {
+        console.error(`Error fetching data with projection from collection ${collectionName}:`, error);
+        throw error;
+      }
+    }
+    
+    // Fall back to sample data
+    if (this.data.has(collectionName)) {
+      const sourceData = this.data.get(collectionName) || [];
+      
+      // Apply projection
+      const results = sourceData.map(item => {
+        const projectedItem: any = {};
+        for (const column of columns) {
+          if (item[column] !== undefined) {
+            projectedItem[column] = item[column];
+          }
+        }
+        return projectedItem;
+      });
+      
+      // Store in temp file
+      const timestamp = Date.now();
+      const fileName = `firebase_${collectionName}_projection_${timestamp}`;
+      await fileStorage.storeData(fileName, results);
+      
+      return results;
     }
     
     return [];
