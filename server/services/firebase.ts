@@ -95,7 +95,7 @@ export class FirebaseService {
       },
       {
         uid: "user3",
-        email: "bob@example.com",
+        email: "bob@exam.com",
         displayName: "Bob Johnson",
         createdAt: new Date("2023-04-10").toISOString()
       }
