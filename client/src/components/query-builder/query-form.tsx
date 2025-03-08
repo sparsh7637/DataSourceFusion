@@ -21,10 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiRequest } from "@/lib/queryClient";
-import { Textarea } from "@/components/ui/textarea";
 import type { DataSource } from "@shared/schema";
-import { ScrollArea } from "@/components/ui/scroll-area";
-
 
 const queryFormSchema = z.object({
   name: z.string().min(2, "Query name is required"),
@@ -50,14 +47,6 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
   const [activeTab, setActiveTab] = useState<string>("builder");
   const [sourceSchemas, setSourceSchemas] = useState<{[key: number]: any}>({});
   const [queryParameters, setQueryParameters] = useState<{name: string, value: string}[]>([]);
-  const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
-  const [availableColumns, setAvailableColumns] = useState<{[key: string]: any[]}>({});
-  const [selectedLimit, setSelectedLimit] = useState<number>(20);
-  const [selectedOrderBy, setSelectedOrderBy] = useState<string>("");
-  const [selectedOrderDirection, setSelectedOrderDirection] = useState<string>("ASC");
-  const [whereConditions, setWhereConditions] = useState<{field: string, operator: string, value: string}[]>([]);
-  const [activeCollection, setActiveCollection] = useState<{sourceId: number, collection: string} | null>(null);
-
 
   const form = useForm<z.infer<typeof queryFormSchema>>({
     resolver: zodResolver(queryFormSchema),
@@ -73,7 +62,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
 
   // Watch for changes to update the parent component
   const formValues = form.watch();
-
+  
   useEffect(() => {
     // Convert parameters to params object
     const params: {[key: string]: any} = {};
@@ -88,7 +77,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
         }
       }
     });
-
+    
     onChange({ ...formValues, params });
   }, [formValues, queryParameters, onChange]);
 
@@ -97,25 +86,25 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
     const fetchCollections = async () => {
       const collections: {[key: string]: string[]} = {};
       const schemas: {[key: number]: any} = {};
-
+      
       for (const sourceId of selectedDataSources) {
         try {
           const source = dataSources.find(ds => ds.id === sourceId);
           if (!source) continue;
-
+          
           // Fetch collections from the API
           const response = await apiRequest('GET', `/api/data-sources/${sourceId}/collections`);
           const collectionNames = await response.json();
-
+          
           if (Array.isArray(collectionNames) && collectionNames.length > 0) {
             collections[source.name] = collectionNames;
-
+            
             // Fetch schema for each collection
             for (const collName of collectionNames) {
               try {
                 const schemaResp = await apiRequest('GET', `/api/data-sources/${sourceId}/collections/${collName}/schema`);
                 const schema = await schemaResp.json();
-
+                
                 if (!schemas[sourceId]) schemas[sourceId] = {};
                 schemas[sourceId][collName] = schema;
               } catch (err) {
@@ -132,20 +121,20 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
           }
         }
       }
-
+      
       setAvailableCollections(collections);
       setSourceSchemas(schemas);
-
+      
       // Remove selected collections that are no longer available
       const flatAvailableCollections = Object.values(collections).flat();
       const validSelectedCollections = selectedCollections.filter(
         (collection) => flatAvailableCollections.includes(collection)
       );
-
+      
       setSelectedCollections(validSelectedCollections);
       form.setValue("collections", validSelectedCollections);
     };
-
+    
     if (selectedDataSources.length > 0) {
       fetchCollections();
     } else {
@@ -154,88 +143,58 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
     }
   }, [selectedDataSources, dataSources]);
 
-  // Fetch column information when a collection is selected
-  useEffect(() => {
-    const fetchColumns = async () => {
-      if (!activeCollection) return;
-
-      const { sourceId, collection } = activeCollection;
-      const key = `${sourceId}:${collection}`;
-
-      // Skip if we already have the columns for this collection
-      if (availableColumns[key]) return;
-
-      try {
-        const response = await apiRequest('GET', `/api/data-sources/${sourceId}/collections/${collection}/schema`);
-        const schema = await response.json();
-
-        if (schema && schema.fields) {
-          setAvailableColumns(prev => ({
-            ...prev,
-            [key]: schema.fields
-          }));
-        }
-      } catch (error) {
-        console.error(`Error fetching schema for collection ${collection}:`, error);
-      }
-    };
-
-    fetchColumns();
-  }, [activeCollection, availableColumns, apiRequest]);
-
-
   // Handle data source selection
   const handleDataSourceChange = (sourceId: number, checked: boolean) => {
     let newSelectedSources;
-
+    
     if (checked) {
       newSelectedSources = [...selectedDataSources, sourceId];
     } else {
       newSelectedSources = selectedDataSources.filter((id) => id !== sourceId);
     }
-
+    
     setSelectedDataSources(newSelectedSources);
     form.setValue("dataSources", newSelectedSources);
   };
 
   // Handle collection selection
-  const handleCollectionChange = (collection: string, sourceId: number) => {
+  const handleCollectionChange = (collection: string, checked: boolean) => {
     let newSelectedCollections;
-    const collectionKey = `${sourceId}:${collection}`;
-
-    if (selectedCollections.includes(collectionKey)) {
-      newSelectedCollections = selectedCollections.filter((c) => c !== collectionKey);
-      setActiveCollection(null);
-      setSelectedColumns([]);
-      setWhereConditions([]);
-      setSelectedOrderBy("");
+    
+    if (checked) {
+      newSelectedCollections = [...selectedCollections, collection];
     } else {
-      newSelectedCollections = [...selectedCollections, collectionKey];
-      setActiveCollection({ sourceId, collection });
+      newSelectedCollections = selectedCollections.filter((c) => c !== collection);
     }
-
+    
     setSelectedCollections(newSelectedCollections);
     form.setValue("collections", newSelectedCollections);
-    generateSampleQuery(collection);
+    
+    // Auto-generate a simple query when collections are selected
+    if (newSelectedCollections.length > 0 && form.getValues("query") === "") {
+      const collection = newSelectedCollections[0];
+      generateSampleQuery(collection);
+    }
   };
-
-
+  
   // Generate a simple sample query based on selected collection
   const generateSampleQuery = (collectionName: string) => {
     // Find which data source this collection belongs to
     let dataSourceId: number | null = null;
     let fields: string[] = ["*"];
-
+    
     // Look through available collections to find the source
     for (const [sourceName, collections] of Object.entries(availableCollections)) {
-      const collectionKey = Object.entries(availableCollections).find(([k,v])=>v.includes(collectionName))
-      if (collectionKey){
-        dataSourceId = parseInt(collectionKey[0].split(':')[0])
+      if (collections.includes(collectionName)) {
+        // Find the data source ID
+        const source = dataSources.find(ds => ds.name === sourceName);
+        if (source) {
+          dataSourceId = source.id;
+        }
         break;
       }
     }
-
-
+    
     // If we have schema information, use specific fields
     if (dataSourceId && sourceSchemas[dataSourceId] && sourceSchemas[dataSourceId][collectionName]) {
       const schema = sourceSchemas[dataSourceId][collectionName];
@@ -243,9 +202,9 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
         fields = schema.fields.slice(0, 5).map((f: any) => f.name);
       }
     }
-
+    
     // Create a simple SELECT query
-    const sampleQuery = `SELECT ${fields.join(', ')} FROM ${collectionName} LIMIT ${selectedLimit}`;
+    const sampleQuery = `SELECT ${fields.join(', ')} FROM ${collectionName} LIMIT 10`;
     form.setValue("query", sampleQuery);
   };
 
@@ -266,12 +225,12 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
       setQueryParameters([]);
       return;
     }
-
+    
     const query = savedQueries.find(q => q.id === parseInt(queryId));
     if (!query) return;
-
+    
     setSelectedSavedQuery(queryId);
-
+    
     // Update form values from saved query
     form.reset({
       name: query.name,
@@ -281,25 +240,25 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
       federationStrategy: query.federationStrategy,
       params: {},
     });
-
+    
     // Update selected data sources and collections
     setSelectedDataSources(Array.isArray(query.dataSources) ? query.dataSources : []);
     setSelectedCollections(Array.isArray(query.collections) ? query.collections : []);
-
+    
     // Extract parameters from the query
     extractQueryParameters(query.query);
-
+    
     toast({
       title: "Query Loaded",
       description: `Loaded query: ${query.name}`,
     });
   };
-
+  
   // Extract parameters from the query (look for :paramName patterns)
   const extractQueryParameters = (query: string) => {
     const paramRegex = /:([a-zA-Z0-9_]+)/g;
     const matches = query.match(paramRegex);
-
+    
     if (matches) {
       const uniqueParams = [...new Set(matches)];
       const newParams = uniqueParams.map(param => ({
@@ -311,33 +270,33 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
       setQueryParameters([]);
     }
   };
-
+  
   // Update parameter value
   const updateParameterValue = (index: number, value: string) => {
     const newParams = [...queryParameters];
     newParams[index].value = value;
     setQueryParameters(newParams);
   };
-
+  
   // Add a new parameter
   const addParameter = () => {
     setQueryParameters([...queryParameters, { name: '', value: '' }]);
   };
-
+  
   // Remove a parameter
   const removeParameter = (index: number) => {
     const newParams = [...queryParameters];
     newParams.splice(index, 1);
     setQueryParameters(newParams);
   };
-
+  
   // Update parameter name
   const updateParameterName = (index: number, name: string) => {
     const newParams = [...queryParameters];
     newParams[index].name = name;
     setQueryParameters(newParams);
   };
-
+  
   // When query changes, extract parameters
   useEffect(() => {
     const query = form.getValues("query");
@@ -345,91 +304,6 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
       extractQueryParameters(query);
     }
   }, [form.watch("query")]);
-
-  // Update SQL query when selections change
-  useEffect(() => {
-    if (activeCollection) {
-      generateSqlQuery();
-    }
-  }, [selectedColumns, selectedLimit, selectedOrderBy, selectedOrderDirection, whereConditions, activeCollection]);
-
-  const generateSqlQuery = () => {
-    if (!activeCollection) return;
-
-    const { collection } = activeCollection;
-    let query = "SELECT ";
-
-    // Add columns
-    if (selectedColumns.length === 0) {
-      query += "* ";
-    } else {
-      query += selectedColumns.join(", ");
-    }
-
-    query += ` FROM ${collection}`;
-
-    // Add WHERE conditions
-    if (whereConditions.length > 0) {
-      const conditions = whereConditions
-        .filter(c => c.field && c.operator)
-        .map(c => {
-          let value = c.value;
-          // Add quotes for string values
-          if (isNaN(Number(value)) && !value.startsWith(":")) {
-            value = `'${value}'`;
-          }
-          return `${c.field} ${c.operator} ${value}`;
-        });
-
-      if (conditions.length > 0) {
-        query += ` WHERE ${conditions.join(" AND ")}`;
-      }
-    }
-
-    // Add ORDER BY
-    if (selectedOrderBy) {
-      query += ` ORDER BY ${selectedOrderBy} ${selectedOrderDirection}`;
-    }
-
-    // Add LIMIT
-    query += ` LIMIT ${selectedLimit}`;
-
-    form.setValue("query", query);
-  };
-
-  const handleColumnSelect = (column: string) => {
-    setSelectedColumns(prev => {
-      // If column is already selected, remove it
-      if (prev.includes(column)) {
-        return prev.filter(c => c !== column);
-      }
-      // Otherwise add it
-      return [...prev, column];
-    });
-  };
-
-  const addWhereCondition = () => {
-    setWhereConditions(prev => [...prev, { field: "", operator: "=", value: "" }]);
-  };
-
-  const updateWhereCondition = (index: number, field: string, value: any) => {
-    setWhereConditions(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
-    });
-  };
-
-  const removeWhereCondition = (index: number) => {
-    setWhereConditions(prev => prev.filter((_, i) => i !== index));
-  };
-
-  // Get columns for active collection
-  const getColumnsForActiveCollection = () => {
-    if (!activeCollection) return [];
-    const key = `${activeCollection.sourceId}:${activeCollection.collection}`;
-    return availableColumns[key] || [];
-  };
 
   return (
     <Form {...form}>
@@ -446,7 +320,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
                     <FormControl>
                       <Input placeholder="User Purchase History" {...field} />
                     </FormControl>
-
+                    
                     <Select value={selectedSavedQuery || ""} onValueChange={handleLoadSavedQuery}>
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="Load Query" />
@@ -465,7 +339,7 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
                 </FormItem>
               )}
             />
-
+            
             <div>
               <FormLabel>Data Sources</FormLabel>
               <div className="flex flex-wrap gap-2 mt-2">
@@ -491,43 +365,47 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
                 </p>
               )}
             </div>
-
+            
             <div>
               <FormLabel>Collections/Tables</FormLabel>
-              <ScrollArea className="h-40 rounded-md border">
-                <div className="p-4">
-                  {selectedDataSources.map((sourceId) => (
-                    <div key={sourceId} className="mb-4">
-                      <div className="font-medium mb-2">
-                        {dataSources.find(ds => ds.id === sourceId)?.name || `Source ${sourceId}`}
-                      </div>
-                      <div className="flex flex-col space-y-2">
-                        {availableCollections[dataSources.find(ds => ds.id === sourceId)?.name]?.map((collection) => (
-                          <div key={collection} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={`collection-${sourceId}-${collection}`}
-                              checked={selectedCollections.includes(`${sourceId}:${collection}`)}
-                              onCheckedChange={() => handleCollectionChange(collection, sourceId)}
-                            />
-                            <label
-                              htmlFor={`collection-${sourceId}-${collection}`}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {Object.keys(availableCollections).length === 0 ? (
+                  <p className="text-sm text-gray-500 col-span-2">
+                    Select a data source to view available collections
+                  </p>
+                ) : (
+                  Object.entries(availableCollections).map(([sourceName, collections]) => (
+                    <div key={sourceName} className={`p-2 rounded-md text-sm ${
+                      sourceName.toLowerCase().includes('firebase') 
+                        ? 'bg-orange-50' 
+                        : 'bg-green-50'
+                    }`}>
+                      <div className="font-medium text-gray-800 mb-1">{sourceName}</div>
+                      <div className="flex flex-wrap gap-1">
+                        {collections.map((collection) => {
+                          const isSelected = selectedCollections.includes(collection);
+                          return (
+                            <Badge
+                              key={collection}
+                              variant={isSelected ? "default" : "outline"}
+                              className={`px-2 py-1 cursor-pointer ${
+                                isSelected 
+                                  ? sourceName.toLowerCase().includes('firebase')
+                                    ? 'bg-orange-100 border-orange-200 text-orange-800'
+                                    : 'bg-green-100 border-green-200 text-green-800'
+                                  : 'bg-white'
+                              }`}
+                              onClick={() => handleCollectionChange(collection, !isSelected)}
                             >
                               {collection}
-                            </label>
-                          </div>
-                        ))}
-                        {(!availableCollections[dataSources.find(ds => ds.id === sourceId)?.name] || availableCollections[dataSources.find(ds => ds.id === sourceId)?.name].length === 0) && (
-                          <div className="text-sm text-muted-foreground">No collections available</div>
-                        )}
+                            </Badge>
+                          );
+                        })}
                       </div>
                     </div>
-                  ))}
-                  {selectedDataSources.length === 0 && (
-                    <div className="text-sm text-muted-foreground">Select data sources to view available collections</div>
-                  )}
-                </div>
-              </ScrollArea>
+                  ))
+                )}
+              </div>
               {form.formState.errors.collections && (
                 <p className="text-sm text-red-500 mt-1">
                   {form.formState.errors.collections.message}
@@ -535,216 +413,102 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
               )}
             </div>
           </div>
-
+          
           <div>
-            <Card className="h-full">
-              <CardContent className="pt-6">
-                {activeCollection ? (
-                  <Tabs defaultValue="columns" className="w-full">
-                    <TabsList className="mb-4">
-                      <TabsTrigger value="columns">Columns</TabsTrigger>
-                      <TabsTrigger value="filters">Filters</TabsTrigger>
-                      <TabsTrigger value="sort">Sort & Limit</TabsTrigger>
-                      <TabsTrigger value="query">Raw Query</TabsTrigger>
+            <FormField
+              control={form.control}
+              name="query"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Query Builder</FormLabel>
+                  <Tabs defaultValue="builder" value={activeTab} onValueChange={setActiveTab}>
+                    <TabsList className="mb-2 grid grid-cols-2">
+                      <TabsTrigger value="builder">SQL Query</TabsTrigger>
+                      <TabsTrigger value="params">Parameters</TabsTrigger>
                     </TabsList>
-
-                    <TabsContent value="columns">
-                      <div className="mb-4">
-                        <h3 className="font-medium mb-2">Select Columns</h3>
-                        <div className="border rounded-md p-2 flex flex-col gap-2 max-h-60 overflow-y-auto">
-                          <div className="flex items-center space-x-2">
-                            <Checkbox
-                              id="select-all-columns"
-                              checked={selectedColumns.length === 0}
-                              onCheckedChange={() => setSelectedColumns(getColumnsForActiveCollection().map(c => c.name))}
-                            />
-                            <label htmlFor="select-all-columns" className="font-medium">All Columns (*)</label>
-                          </div>
-                          {getColumnsForActiveCollection().map((column) => (
-                            <div key={column.name} className="flex items-center space-x-2">
-                              <Checkbox
-                                id={`column-${column.name}`}
-                                checked={selectedColumns.includes(column.name)}
-                                onCheckedChange={() => handleColumnSelect(column.name)}
-                              />
-                              <label htmlFor={`column-${column.name}`} className="text-sm">
-                                {column.name} <span className="text-xs text-muted-foreground">({column.type})</span>
-                              </label>
-                            </div>
-                          ))}
+                    
+                    <TabsContent value="builder">
+                      <div className="border border-gray-300 rounded-md overflow-hidden">
+                        <div className="bg-gray-50 px-3 py-2 border-b border-gray-300 flex space-x-2">
+                          <Button type="button" size="sm" variant="secondary" className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded">Select</Button>
+                          <Button type="button" size="sm" variant="ghost" className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 rounded">From</Button>
+                          <Button type="button" size="sm" variant="ghost" className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 rounded">Where</Button>
+                          <Button type="button" size="sm" variant="ghost" className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 rounded">Order By</Button>
+                          <Button type="button" size="sm" variant="ghost" className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 rounded">Limit</Button>
                         </div>
+                        <FormControl>
+                          <textarea
+                            {...field}
+                            className="p-3 font-mono text-sm bg-gray-800 text-gray-200 h-48 w-full"
+                            placeholder="SELECT users.name, orders.orderId, orders.orderDate FROM users JOIN orders ON users.uid = orders.userId WHERE users.uid = :userId LIMIT 10"
+                          />
+                        </FormControl>
                       </div>
                     </TabsContent>
-
-                    <TabsContent value="filters">
-                      <div className="mb-4">
-                        <h3 className="font-medium mb-2">WHERE Conditions</h3>
-                        <div className="border rounded-md p-2 space-y-3 max-h-60 overflow-y-auto">
-                          {whereConditions.map((condition, index) => (
-                            <div key={index} className="grid grid-cols-12 gap-2 items-center">
-                              <div className="col-span-4">
-                                <Select
-                                  value={condition.field}
-                                  onValueChange={(value) => updateWhereCondition(index, 'field', value)}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Field" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {getColumnsForActiveCollection().map((column) => (
-                                      <SelectItem key={column.name} value={column.name}>
-                                        {column.name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="col-span-3">
-                                <Select
-                                  value={condition.operator}
-                                  onValueChange={(value) => updateWhereCondition(index, 'operator', value)}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Op" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="=">Equal (=)</SelectItem>
-                                    <SelectItem value="!=">Not Equal (!=)</SelectItem>
-                                    <SelectItem value=">">Greater Than (&gt;)</SelectItem>
-                                    <SelectItem value=">=">Greater Than or Equal (&gt;=)</SelectItem>
-                                    <SelectItem value="<">Less Than (&lt;)</SelectItem>
-                                    <SelectItem value="<=">Less Than or Equal (&lt;=)</SelectItem>
-                                    <SelectItem value="LIKE">Like</SelectItem>
-                                    <SelectItem value="IN">In</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="col-span-4">
-                                <Input
-                                  placeholder="Value"
-                                  value={condition.value}
-                                  onChange={(e) => updateWhereCondition(index, 'value', e.target.value)}
-                                />
-                              </div>
-                              <div className="col-span-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => removeWhereCondition(index)}
-                                  className="h-8 w-8"
-                                >
-                                  ✕
-                                </Button>
-                              </div>
+                    
+                    <TabsContent value="params">
+                      <div className="border border-gray-300 rounded-md p-3">
+                        <div className="space-y-2">
+                          {queryParameters.length === 0 ? (
+                            <div className="text-sm text-gray-500 text-center py-4">
+                              No parameters found in the query.<br />
+                              Add parameters in your query using ':paramName' syntax.
                             </div>
-                          ))}
-                          <Button onClick={addWhereCondition} variant="outline" size="sm" className="w-full">
-                            Add Condition
+                          ) : (
+                            queryParameters.map((param, index) => (
+                              <div key={index} className="flex space-x-2 items-center">
+                                <div className="w-1/3">
+                                  <Input 
+                                    value={param.name}
+                                    onChange={(e) => updateParameterName(index, e.target.value)}
+                                    placeholder="Parameter name"
+                                  />
+                                </div>
+                                <div className="w-2/3 flex space-x-2">
+                                  <Input 
+                                    value={param.value}
+                                    onChange={(e) => updateParameterValue(index, e.target.value)}
+                                    placeholder="Parameter value"
+                                  />
+                                  <Button 
+                                    type="button" 
+                                    variant="ghost" 
+                                    size="sm"
+                                    onClick={() => removeParameter(index)}
+                                    className="text-red-500"
+                                  >
+                                    &times;
+                                  </Button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                          <Button 
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            onClick={() => {
+                              // This button will fetch data directly without parameters
+                              const fetchDataEvent = new CustomEvent('fetchData', {
+                                detail: { collectionName: form.getValues('collections')[0] }
+                              });
+                              window.dispatchEvent(fetchDataEvent);
+                            }}
+                            className="mt-2 bg-blue-600 text-white hover:bg-blue-700"
+                          >
+                            Fetch Data
                           </Button>
                         </div>
                       </div>
                     </TabsContent>
-
-                    <TabsContent value="sort">
-                      <div className="mb-4">
-                        <h3 className="font-medium mb-2">Order By</h3>
-                        <div className="grid grid-cols-12 gap-2 items-center">
-                          <div className="col-span-8">
-                            <Select
-                              value={selectedOrderBy}
-                              onValueChange={setSelectedOrderBy}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select field to sort by" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="">None</SelectItem>
-                                {getColumnsForActiveCollection().map((column) => (
-                                  <SelectItem key={column.name} value={column.name}>
-                                    {column.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="col-span-4">
-                            <Select
-                              value={selectedOrderDirection}
-                              onValueChange={setSelectedOrderDirection}
-                              disabled={!selectedOrderBy}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Direction" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="ASC">Ascending</SelectItem>
-                                <SelectItem value="DESC">Descending</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        <h3 className="font-medium mb-2 mt-4">Limit</h3>
-                        <Input
-                          type="number"
-                          min="1"
-                          max="1000"
-                          value={selectedLimit}
-                          onChange={(e) => setSelectedLimit(parseInt(e.target.value) || 20)}
-                        />
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent value="query">
-                      <FormField
-                        control={form.control}
-                        name="query"
-                        render={({ field }) => (
-                          <FormItem className="h-full flex flex-col">
-                            <FormLabel>SQL Query</FormLabel>
-                            <FormControl>
-                              <Textarea
-                                placeholder="SELECT * FROM collection WHERE field = value"
-                                className="flex-1 min-h-[250px] font-mono"
-                                {...field}
-                              />
-                            </FormControl>
-                            <FormDescription>
-                              You can manually edit the query or use the other tabs to build it.
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </TabsContent>
                   </Tabs>
-                ) : (
-                  <FormField
-                    control={form.control}
-                    name="query"
-                    render={({ field }) => (
-                      <FormItem className="h-full flex flex-col">
-                        <FormLabel>Query</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            placeholder="SELECT * FROM collection WHERE field = value"
-                            className="flex-1 min-h-[250px] font-mono"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Simple SQL-like query language. Use <code>SELECT * FROM collection WHERE field = value</code> syntax.
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-              </CardContent>
-            </Card>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
         </div>
-
+        
         <FormField
           control={form.control}
           name="federationStrategy"
@@ -752,8 +516,8 @@ export default function QueryForm({ dataSources, savedQueries, onChange }: Query
             <FormItem>
               <FormLabel>Federation Strategy</FormLabel>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-                <RadioGroup
-                  defaultValue={field.value}
+                <RadioGroup 
+                  defaultValue={field.value} 
                   onValueChange={field.onChange}
                   className="grid grid-cols-1 md:grid-cols-3 gap-4"
                 >
