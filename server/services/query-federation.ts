@@ -443,9 +443,109 @@ class QueryFederationService {
         return { isValid: false, error: "Query must include FROM clause" };
       }
 
-      return { isValid: true };
+      // Parse the query to extract relevant information
+      const parsedQuery = this.parseQuery(query);
+      if (!parsedQuery) {
+        return { isValid: false, error: "Failed to parse query" };
+      }
+
+      return { isValid: true, parsedQuery };
     } catch (error) {
       return { isValid: false, error: (error as Error).message };
+    }
+  }
+
+  private parseQuery(query: string): any {
+    try {
+      // Very basic SQL parser to extract collections and fields
+      const selectMatch = query.match(/SELECT\s+(.+?)\s+FROM/i);
+      const fromMatch = query.match(/FROM\s+(.+?)(?:\s+WHERE|\s+ORDER|\s+LIMIT|$)/i);
+      const whereMatch = query.match(/WHERE\s+(.+?)(?:\s+ORDER|\s+LIMIT|$)/i);
+      const orderMatch = query.match(/ORDER\s+BY\s+(.+?)(?:\s+LIMIT|$)/i);
+      const limitMatch = query.match(/LIMIT\s+(\d+)/i);
+
+      if (!selectMatch || !fromMatch) {
+        return null;
+      }
+
+      // Extract columns
+      const columnsStr = selectMatch[1].trim();
+      let columns = ['*'];
+      if (columnsStr !== '*') {
+        columns = columnsStr.split(',').map(col => col.trim());
+      }
+
+      // Extract collections
+      const collectionsStr = fromMatch[1].trim();
+      const collections = collectionsStr.split(',').map(col => col.trim());
+
+      // Extract filters if present
+      const filters = [];
+      if (whereMatch) {
+        const whereClause = whereMatch[1].trim();
+        // Very basic filter parsing, would need to be expanded for real use
+        const filterParts = whereClause.split(/\s+AND\s+/i);
+        
+        for (const part of filterParts) {
+          const operatorMatch = part.match(/(.+?)(=|!=|>|>=|<|<=|LIKE|IN)(.+)/i);
+          if (operatorMatch) {
+            const field = operatorMatch[1].trim();
+            const operator = operatorMatch[2].trim().toLowerCase();
+            const value = operatorMatch[3].trim().replace(/^'|'$/g, '').replace(/^"|"$/g, '');
+            
+            let op = '==';
+            switch (operator) {
+              case '=': op = '=='; break;
+              case '!=': op = '!='; break;
+              case '>': op = '>'; break;
+              case '>=': op = '>='; break;
+              case '<': op = '<'; break;
+              case '<=': op = '<='; break;
+              case 'like': op = 'like'; break;
+              case 'in': op = 'in'; break;
+            }
+            
+            filters.push({
+              field,
+              operator: op,
+              value
+            });
+          }
+        }
+      }
+
+      // Extract order by if present
+      const orderBy = {};
+      if (orderMatch) {
+        const orderClause = orderMatch[1].trim();
+        const orderParts = orderClause.split(',');
+        
+        for (const part of orderParts) {
+          const orderMatch = part.trim().match(/(.+?)(?:\s+(ASC|DESC))?$/i);
+          if (orderMatch) {
+            const field = orderMatch[1].trim();
+            const direction = (orderMatch[2] || 'ASC').toUpperCase() === 'DESC' ? 'desc' : 'asc';
+            orderBy[field] = direction;
+          }
+        }
+      }
+
+      // Extract limit if present
+      let limitValue = null;
+      if (limitMatch) {
+        limitValue = parseInt(limitMatch[1], 10);
+      }
+
+      return {
+        columns,
+        collections,
+        filters,
+        orderBy: Object.keys(orderBy).length > 0 ? orderBy : null,
+        limit: limitValue
+      };
+    } catch (error) {
+      console.error("Error parsing query:", error);
+      return null;
     }
   }
 }

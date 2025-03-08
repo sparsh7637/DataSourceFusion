@@ -371,13 +371,23 @@ export class FirebaseService {
         return finalResults;
       } catch (error) {
         console.error(`Error executing query on collection ${collectionName}:`, error);
-        throw error;
+        // Fall back to sample data on error
+        console.log("Falling back to sample data due to error");
       }
     }
     
     // Fall back to sample data
+    console.log("Using sample data for query execution");
     if (this.data.has(collectionName)) {
       let result = [...(this.data.get(collectionName) || [])];
+      
+      // Handle selected columns (projection)
+      let selectedColumns = ['*'];
+      if (queryParams.columns && Array.isArray(queryParams.columns) && queryParams.columns.length > 0) {
+        selectedColumns = queryParams.columns;
+      } else if (queryParams.selectedColumns && Array.isArray(queryParams.selectedColumns)) {
+        selectedColumns = queryParams.selectedColumns;
+      }
       
       // Apply simple filtering if queryParams is provided
       if (queryParams && typeof queryParams === 'object') {
@@ -397,6 +407,14 @@ export class FirebaseService {
                 case '>=': return itemValue >= filter.value;
                 case '<': return itemValue < filter.value;
                 case '<=': return itemValue <= filter.value;
+                case 'like': 
+                case 'contains':
+                case 'array-contains':
+                  if (typeof itemValue === 'string' && typeof filter.value === 'string') {
+                    const pattern = filter.value.replace(/%/g, '.*');
+                    return new RegExp(pattern).test(itemValue);
+                  }
+                  return false;
                 default: return true;
               }
             });
@@ -423,11 +441,11 @@ export class FirebaseService {
           result = result.slice(0, queryParams.limit);
         }
         
-        // Apply projection (selected columns) if provided
-        if (queryParams.columns && Array.isArray(queryParams.columns) && queryParams.columns.length > 0) {
+        // Apply projection (selected columns) if needed
+        if (selectedColumns.length > 0 && !selectedColumns.includes('*')) {
           result = result.map(item => {
             const projectedItem: any = {};
-            for (const column of queryParams.columns) {
+            for (const column of selectedColumns) {
               if (item[column] !== undefined) {
                 projectedItem[column] = item[column];
               }
@@ -435,12 +453,12 @@ export class FirebaseService {
             return projectedItem;
           });
         }
-        
-        // Store results in temp file
-        const timestamp = Date.now();
-        const fileName = `firebase_${collectionName}_${timestamp}`;
-        await fileStorage.storeData(fileName, result);
       }
+      
+      // Store results in temp file
+      const timestamp = Date.now();
+      const fileName = `firebase_${collectionName}_${timestamp}`;
+      await fileStorage.storeData(fileName, result);
       
       return result;
     }

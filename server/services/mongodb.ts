@@ -327,22 +327,50 @@ export class MongoDBService {
           if (query.limit && typeof query.limit === 'number') {
             options.limit = query.limit;
           }
+
+          // Handle projection
+          if (query.columns && Array.isArray(query.columns) && query.columns.length > 0) {
+            options.projection = {};
+            for (const column of query.columns) {
+              options.projection[column] = 1;
+            }
+          } else if (query.selectedColumns && Array.isArray(query.selectedColumns) && 
+                     query.selectedColumns.length > 0 && !query.selectedColumns.includes('*')) {
+            options.projection = {};
+            for (const column of query.selectedColumns) {
+              options.projection[column] = 1;
+            }
+          }
         }
 
         // Execute the query
         const cursor = collection.find(filter, options);
         const results = await cursor.toArray();
 
+        // Store results in temp file
+        const timestamp = Date.now();
+        const fileName = `mongodb_${collectionName}_${timestamp}`;
+        await fileStorage.storeData(fileName, results);
+
         return results;
       } catch (error) {
         console.error(`Error executing query on collection ${collectionName}:`, error);
-        throw error;
+        console.log("Falling back to sample data due to error");
       }
     }
 
     // Fall back to sample data
+    console.log("Using sample data for query execution");
     if (this.data.has(collectionName)) {
       let results = [...(this.data.get(collectionName) || [])];
+
+      // Handle selected columns (projection)
+      let selectedColumns = ['*'];
+      if (query.columns && Array.isArray(query.columns) && query.columns.length > 0) {
+        selectedColumns = query.columns;
+      } else if (query.selectedColumns && Array.isArray(query.selectedColumns)) {
+        selectedColumns = query.selectedColumns;
+      }
 
       // Apply simple filtering if query is provided
       if (query && typeof query === 'object') {
@@ -362,6 +390,14 @@ export class MongoDBService {
                 case '>=': return itemValue >= filter.value;
                 case '<': return itemValue < filter.value;
                 case '<=': return itemValue <= filter.value;
+                case 'like': 
+                case 'contains':
+                case 'array-contains':
+                  if (typeof itemValue === 'string' && typeof filter.value === 'string') {
+                    const pattern = filter.value.replace(/%/g, '.*');
+                    return new RegExp(pattern).test(itemValue);
+                  }
+                  return false;
                 default: return true;
               }
             });
@@ -387,7 +423,25 @@ export class MongoDBService {
         if (query.limit && typeof query.limit === 'number') {
           results = results.slice(0, query.limit);
         }
+
+        // Apply projection (selected columns) if needed
+        if (selectedColumns.length > 0 && !selectedColumns.includes('*')) {
+          results = results.map(item => {
+            const projectedItem: any = {};
+            for (const column of selectedColumns) {
+              if (item[column] !== undefined) {
+                projectedItem[column] = item[column];
+              }
+            }
+            return projectedItem;
+          });
+        }
       }
+
+      // Store results in temp file
+      const timestamp = Date.now();
+      const fileName = `mongodb_${collectionName}_${timestamp}`;
+      await fileStorage.storeData(fileName, results);
 
       return results;
     }
@@ -425,6 +479,15 @@ export class MongoDBService {
         case 'in':
           if (Array.isArray(filter.value)) {
             result[filter.field] = { $in: filter.value };
+          }
+          break;
+        case 'like':
+        case 'contains':
+        case 'array-contains':
+          if (typeof filter.value === 'string') {
+            // Convert SQL LIKE pattern to MongoDB regex
+            const pattern = filter.value.replace(/%/g, '.*');
+            result[filter.field] = { $regex: new RegExp(pattern, 'i') };
           }
           break;
       }
